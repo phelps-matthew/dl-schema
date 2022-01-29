@@ -29,6 +29,8 @@ class Trainer:
         self.cfg = cfg
         self.verbose = verbose
         self.tune = tune
+        self.curr_epoch = 0
+        self.scheduler = None
 
         # Set mlflow paths for model/optim saving
         self.mlflow_root = Path(mlflow.get_artifact_uri()[7:])  # cut file:/ uri
@@ -56,17 +58,29 @@ class Trainer:
             epochs=self.cfg.epochs,
         )
 
-    def save_model(self, path="last.pt"):
+    def save_model(self, path="last.pt", loss=None):
+        """save model state dict, optim state dict, epoch and loss"""
         logger.info(f"saving {self.ckpt_root / path}")
-        torch.save(self.raw_model.state_dict(), self.ckpt_root / path)
+        torch.save(
+            {
+                "model_state_dict": self.raw_model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "epoch": self.curr_epoch,
+                "loss": loss,
+            },
+            self.ckpt_root / path,
+        )
 
-    def save_optimizer(self, path="last_optim.pt"):
-        logger.info(f"saving {self.ckpt_root / path}")
-        torch.save(self.optimizer.state_dict(), self.ckpt_root / path)
+    def load_model(self, path="last.pt"):
+        logger.info(f"loading {path}")
+        ckpt = torch.load(path)
+        self.raw_model.load_state_dict(ckpt["model_state_dict"])
+        self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        self.curr_epoch = ckpt["epoch"] + 1
 
-    def train_epoch(self, epoch):
+    def train_epoch(self):
         """Returns: train_epoch_loss"""
-        model, cfg, optim = self.model, self.cfg, self.optimizer
+        model, cfg, epoch = self.model, self.cfg, self.curr_epoch
         model.train()
         loader = DataLoader(
             self.train_dataset,
@@ -75,9 +89,11 @@ class Trainer:
             batch_size=cfg.bs,
             num_workers=cfg.num_workers,
         )
-        # TODO: More elegant method of getting initial steps
-        if epoch == 0:
-            self.set_scheduler(len(loader))
+
+        # Initialize lr scheduler
+        if self.scheduler is None:
+            self.set_scheduler(steps=len(loader))
+
         pbar = tqdm(enumerate(loader), total=len(loader), disable=not (self.verbose))
         losses = []
         for it, (x, y) in pbar:
@@ -90,16 +106,16 @@ class Trainer:
                 loss = loss.mean()
                 losses.append(loss.item())
 
-            params = {k: optim.param_groups[0][k] for k in ["lr"]}
+            params = {k: self.optimizer.param_groups[0][k] for k in ["lr"]}
 
             model.zero_grad()
             loss.backward()
-            optim.step()
+            self.optimizer.step()
             self.scheduler.step()
 
             # report progress
             pbar.set_description(
-                f"(train) epoch {epoch+1} iter {it}: train loss {loss.item():.5f} "
+                f"(train) epoch {epoch} iter {it}: train loss {loss.item():.5f} "
                 + f"lr {params['lr']:.2e}"
             )
 
@@ -114,9 +130,9 @@ class Trainer:
         logger.info(f"train loss: {train_epoch_loss}")
         return train_epoch_loss
 
-    def test_epoch(self, epoch):
+    def test_epoch(self):
         """Returns: test_epoch_loss"""
-        model, cfg = self.model, self.cfg
+        model, cfg, epoch = self.model, self.cfg, self.curr_epoch
         model.eval()
         # Form dataloader. Uses bs and workers from train cfg.
         loader = DataLoader(
@@ -140,7 +156,7 @@ class Trainer:
 
             # report progress
             pbar.set_description(
-                f"(test) epoch {epoch+1} iter {it}: test loss {loss.item():.5f}"
+                f"(test) epoch {epoch} iter {it}: test loss {loss.item():.5f}"
             )
 
             # log test batch loss and test batch image grid
@@ -157,21 +173,29 @@ class Trainer:
         """Returns: best_epoch_loss"""
         cfg = self.cfg
         best_epoch_loss = float("inf")
-        for epoch in range(cfg.epochs):
-            train_epoch_loss = self.train_epoch(epoch)
+        for epoch in range(self.curr_epoch, cfg.epochs + self.curr_epoch):
+            self.curr_epoch = epoch
+            train_epoch_loss = self.train_epoch()
             mlflow.log_metric("train_epoch_loss", train_epoch_loss, epoch + 1)
 
-            # Log best loss and support early stop checkpoints
+            # Evaluate on test dataset
             if self.test_dataset is not None:
-                test_epoch_loss = self.test_epoch(epoch)
+                test_epoch_loss = self.test_epoch()
                 mlflow.log_metric("test_epoch_loss", test_epoch_loss, epoch + 1)
-                if self.tune:
-                    tune.report(loss=test_epoch_loss, epoch=epoch + 1)
+
+                # Update best loss, save best model state
                 if test_epoch_loss < best_epoch_loss:
                     best_epoch_loss = test_epoch_loss
                     mlflow.log_metric(
                         "best_test_epoch_loss", best_epoch_loss, epoch + 1
                     )
-                    if cfg.early_stop:
-                        mlflow.pytorch.log_model(self.model, "best_model")
+                    if cfg.save_best:
+                        self.save_model("best.pt", loss=best_epoch_loss)
+
+                # Save latest model
+                if cfg.save_last:
+                    self.save_model("last.pt", loss=test_epoch_loss)
+
+                if self.tune:
+                    tune.report(loss=test_epoch_loss, epoch=epoch + 1)
         return best_epoch_loss

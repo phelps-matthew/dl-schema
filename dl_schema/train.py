@@ -62,14 +62,19 @@ def main():
         logger.info("initializing trainer")
         trainer = Trainer(model, cfg, train_dataset, val_dataset)
 
-        # Log params, state dicts, train script to mlflow
-        mlflow.log_dict(cfg_dict, "cfg.yaml")
-        mlflow.log_artifact(Path(__file__))
+        # Log params, state dicts, and relevant training scripts to mlflow
+        script_dir = Path(__file__).parent
+        mlflow.log_artifact(script_dir / "train.py", "archive")
+        mlflow.log_artifact(script_dir / "trainer.py", "archive")
+        mlflow.log_artifact(script_dir / "cfg.py", "archive")
+        mlflow.log_dict(cfg_dict, "archive/cfg.yaml")
         mlflow.log_params(flatten(cfg_dict))
 
         # Train
-        trainer.save_model("init.pt")
-        trainer.save_optimizer("init_optim.pt")
+        if cfg.load_ckpt_pth:
+            trainer.load_model(cfg.load_ckpt_pth)
+        if cfg.save_init:
+            trainer.save_model("init.pt")
         trainer.train()
 
 

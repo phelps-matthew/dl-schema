@@ -43,21 +43,27 @@ class TrainConfig:
     # experiment name
     exp_name: Optional[str] = None
     # gpu list to expose to training instance
-    gpus: List[int] = field(default_factory=lambda: [0, 3])
+    gpus: List[int] = field(default_factory=lambda: [0])
+    # number of cpu workers in dataloader
+    num_workers: int = 1
     # maximum epoch number
     epochs: int = 8
     # batch size
     bs: int = 2
-    # enable best checkpoint saving
-    early_stop: bool = False
-    # number of cpu workers in dataloader
-    num_workers: int = 1
     # learning rate
     lr: float = 1e-4
     # weight decay as used in AdamW
     weight_decay: float = 0.1  # only applied on matmul weights
     # AdamW momentum parameters
     betas: tuple = (0.9, 0.95)
+    # save initial model state
+    save_init: bool = False
+    # save last model state
+    save_last: bool = False
+    # save best model state (early stopping)
+    save_best: bool = False
+    # checkpoint load path
+    load_ckpt_pth: Optional[str] = None
 
 
 pyrallis.decode.register(Callable, lambda x: globals()[x[1:]]())
