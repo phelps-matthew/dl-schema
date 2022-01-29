@@ -30,3 +30,8 @@
 * yann - underdeveloped, and also quite large as a package. scope too big
 * yacs - good, but does not use python dataclasses
 * dcargs - close to pyrallis, no support for registering encoders/decoders. not as good cli auto gen for  nested dataclasses
+
+## LR Schedulers
+* From the configuration of the optimizer, we have two parameters divided into two groups, those that receive weight decay and those that do not. Thus when calling scheduerl.get_last_lr(), we receive a list of two entries. Parameter grouping is also useful for discriminative learning rates.
+* Moreoever, get_last_lr returns the lr after the step update.
+* AdamW does not have conventional 'momentum'. Hence the momentum cylcling in onecycle has no effect.

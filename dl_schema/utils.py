@@ -9,7 +9,6 @@ import random
 import torch
 import collections
 
-
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)

@@ -1,21 +1,18 @@
 """
 Sample training loop.
 """
-import math
 import logging
-from tqdm import tqdm
+from pathlib import Path
 from dataclasses import asdict
+from tqdm import tqdm
 import numpy as np
 import torch
-import torch.optim as optim
-from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data.dataloader import DataLoader
 from dl_schema.utils import flatten
+import torchvision
 
 import mlflow
 
-from torch.utils.tensorboard import SummaryWriter
-import torchvision
 
 from ray import tune
 
@@ -33,6 +30,11 @@ class Trainer:
         self.verbose = verbose
         self.tune = tune
 
+        # Set mlflow paths for model/optim saving
+        self.mlflow_root = Path(mlflow.get_artifact_uri()[7:])  # cut file:/ uri
+        self.ckpt_root = self.mlflow_root / "checkpoints"
+        (self.ckpt_root).mkdir(parents=True, exist_ok=True)
+
         self.device = "cpu"
         if torch.cuda.is_available():
             self.device = torch.cuda.current_device()
@@ -45,12 +47,25 @@ class Trainer:
         )
         self.optimizer = self.raw_model.configure_optimizers(self.cfg)
 
-    def save_checkpoint(self):
-        logger.info(f"saving {self.cfg.ckpt_path}")
-        torch.save(self.raw_model.state_dict(), self.cfg.ckpt_path)
+    def set_scheduler(self, steps):
+        """pass dataloader length into lr scheduler"""
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            self.optimizer,
+            self.cfg.lr,
+            steps_per_epoch=steps,
+            epochs=self.cfg.epochs,
+        )
+
+    def save_model(self, path="last.pt"):
+        logger.info(f"saving {self.ckpt_root / path}")
+        torch.save(self.raw_model.state_dict(), self.ckpt_root / path)
+
+    def save_optimizer(self, path="last_optim.pt"):
+        logger.info(f"saving {self.ckpt_root / path}")
+        torch.save(self.optimizer.state_dict(), self.ckpt_root / path)
 
     def train_epoch(self, epoch):
-        """ Returns: train_epoch_loss """
+        """Returns: train_epoch_loss"""
         model, cfg, optim = self.model, self.cfg, self.optimizer
         model.train()
         loader = DataLoader(
@@ -60,6 +75,9 @@ class Trainer:
             batch_size=cfg.bs,
             num_workers=cfg.num_workers,
         )
+        # TODO: More elegant method of getting initial steps
+        if epoch == 0:
+            self.set_scheduler(len(loader))
         pbar = tqdm(enumerate(loader), total=len(loader), disable=not (self.verbose))
         losses = []
         for it, (x, y) in pbar:
@@ -72,18 +90,23 @@ class Trainer:
                 loss = loss.mean()
                 losses.append(loss.item())
 
+            params = {k: optim.param_groups[0][k] for k in ["lr"]}
+
             model.zero_grad()
             loss.backward()
             optim.step()
+            self.scheduler.step()
 
             # report progress
             pbar.set_description(
                 f"(train) epoch {epoch+1} iter {it}: train loss {loss.item():.5f} "
-                + f"lr {cfg.lr:.2e}"
+                + f"lr {params['lr']:.2e}"
             )
 
-            # log train batch loss and train batch image grid
-            mlflow.log_metric("train_batch_loss", loss.item(), it)
+            # log things we like
+            step = it + epoch * len(loader)
+            mlflow.log_metrics(params, step)
+            mlflow.log_metric("train_batch_loss", loss.item(), step)
             grid = torchvision.utils.make_grid(x.cpu()).permute(1, 2, 0)
             mlflow.log_image(grid.numpy(), "latest_train_batch.png")
 
@@ -92,7 +115,7 @@ class Trainer:
         return train_epoch_loss
 
     def test_epoch(self, epoch):
-        """ Returns: test_epoch_loss """
+        """Returns: test_epoch_loss"""
         model, cfg = self.model, self.cfg
         model.eval()
         # Form dataloader. Uses bs and workers from train cfg.
@@ -121,7 +144,8 @@ class Trainer:
             )
 
             # log test batch loss and test batch image grid
-            mlflow.log_metric("test_batch_loss", loss.item(), it)
+            step = it + epoch * len(loader)
+            mlflow.log_metric("test_batch_loss", loss.item(), step)
             grid = torchvision.utils.make_grid(x.cpu()).permute(1, 2, 0)
             mlflow.log_image(grid.numpy(), "latest_test_batch.png")
 
@@ -130,7 +154,7 @@ class Trainer:
         return test_epoch_loss
 
     def train(self):
-        """ Returns: best_epoch_loss """
+        """Returns: best_epoch_loss"""
         cfg = self.cfg
         best_epoch_loss = float("inf")
         for epoch in range(cfg.epochs):

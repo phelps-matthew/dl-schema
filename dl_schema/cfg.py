@@ -45,7 +45,7 @@ class TrainConfig:
     # gpu list to expose to training instance
     gpus: List[int] = field(default_factory=lambda: [0, 3])
     # maximum epoch number
-    epochs: int = 10
+    epochs: int = 8
     # batch size
     bs: int = 2
     # enable best checkpoint saving

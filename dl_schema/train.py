@@ -1,5 +1,7 @@
+"""Sample training run"""
 import os
 import logging
+from pathlib import Path
 import pprint
 from dataclasses import asdict
 import mlflow
@@ -44,23 +46,30 @@ def main():
         logger.info(f"creating mlflow experiment: {cfg.exp_name}")
         exp_id = mlflow.create_experiment(cfg.exp_name)
 
-    # Build model
-    logger.info(f"loading model: {cfg.model.name}")
-    model = build_model(asdict(cfg.model))
-
-    # Initialize Trainer
-    logger.info("initializing trainer")
-    trainer = Trainer(model, cfg, train_dataset, val_dataset)
-    cfg_dict = pyrallis.encode(cfg)  # cfg as dict, encoded for yaml
-    logger.info("\n" + pprint.pformat(cfg_dict))
-
     # Train as mlflow run
     with mlflow.start_run(experiment_id=exp_id, run_name=cfg.run_name):
-        run = mlflow.active_run()
-        logger.info(f"mlflow exp_id: {run.info.experiment_id} run_id: {run.info.run_id}")
-        #mlflow.pytorch.log_model(model, "init_model")
+        logger.info(f"mlflow exp_id: {mlflow.active_run().info.experiment_id}")
+
+        # Log the config
+        cfg_dict = pyrallis.encode(cfg)  # cfg as dict, encoded for yaml
+        logger.info("\n" + pprint.pformat(cfg_dict))
+
+        # Build model
+        logger.info(f"loading model: {cfg.model.name}")
+        model = build_model(asdict(cfg.model))
+
+        # Initialize Trainer
+        logger.info("initializing trainer")
+        trainer = Trainer(model, cfg, train_dataset, val_dataset)
+
+        # Log params, state dicts, train script to mlflow
         mlflow.log_dict(cfg_dict, "cfg.yaml")
+        mlflow.log_artifact(Path(__file__))
         mlflow.log_params(flatten(cfg_dict))
+
+        # Train
+        trainer.save_model("init.pt")
+        trainer.save_optimizer("init_optim.pt")
         trainer.train()
 
 
