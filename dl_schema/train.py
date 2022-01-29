@@ -7,13 +7,10 @@ from dataclasses import asdict
 import mlflow
 import pyrallis
 from dl_schema.dataset import MyDataset
-from dl_schema.model import build_model
+from dl_schema.models import build_model
 from dl_schema.cfg import TrainConfig
 from dl_schema.trainer import Trainer
 from dl_schema.utils import set_seed, flatten
-
-# checkpoint = torch.load('cifar10_model.pt')
-# model.load_state_dict(checkpoint)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -55,7 +52,7 @@ def main():
         logger.info("\n" + pprint.pformat(cfg_dict))
 
         # Build model
-        logger.info(f"loading model: {cfg.model.name}")
+        logger.info(f"initializing model: {cfg.model.name}")
         model = build_model(asdict(cfg.model))
 
         # Initialize Trainer

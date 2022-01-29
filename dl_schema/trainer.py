@@ -8,7 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import torch
 from torch.utils.data.dataloader import DataLoader
-from dl_schema.utils import flatten
+from dl_schema.utils import flatten, configure_adamw
 import torchvision
 
 import mlflow
@@ -47,7 +47,7 @@ class Trainer:
         self.raw_model = (
             self.model.module if hasattr(self.model, "module") else self.model
         )
-        self.optimizer = self.raw_model.configure_optimizers(self.cfg)
+        self.optimizer = configure_adamw(self.raw_model, self.cfg)
 
     def set_scheduler(self, steps):
         """pass dataloader length into lr scheduler"""
