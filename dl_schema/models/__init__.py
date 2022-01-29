@@ -1,5 +1,5 @@
 """
-Method for registering and building any models in /models
+Method for registering and building any models in ./models/*
 """
 from dl_schema.models.resnet18 import ResNet18
 from dl_schema.models.vgg11 import VGG11
@@ -10,8 +10,7 @@ MODEL_REGISTRY = {"ResNet18": ResNet18, "VGG11": VGG11}
 
 def build_model(cfg_dict):
     """initialize model from config dict"""
-    name = cfg_dict.pop("name")
-    return MODEL_REGISTRY[name](**cfg_dict)
+    return MODEL_REGISTRY[cfg_dict.pop("name")](**cfg_dict)
 
 
 if __name__ == "__main__":
