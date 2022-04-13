@@ -1,0 +1,41 @@
+betas:
+- 0.9
+- 0.95
+bs: 2
+data:
+  shuffle: true
+  test_root: ./data/processed/test
+  train_root: ./data/processed/train
+epochs: 2
+exp_name: debug
+gpus:
+- -1
+load_ckpt_pth: null
+load_optimizer: false
+log:
+  batch_freq: 1
+  enable_async: true
+  uri: ~/dev/spec21/spec21/keypoint_regression/mlruns
+loss: crossentropy
+lr: 0.0003
+lr_method: onecycle
+metric1: accuracy
+model:
+  dropout1: 0.25
+  dropout2: 0.5
+  fc_units: 128
+  in_channels: 1
+  model_class: BabyCNN
+  out_features: 10
+num_workers: 4
+onecycle_div_factor: 25
+onecycle_final_div_factor: 10000.0
+resume: false
+run_name: run_0
+save_best: false
+save_init: false
+save_last: false
+seed: 42
+steps: null
+tune: false
+weight_decay: 0.0

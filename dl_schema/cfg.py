@@ -113,7 +113,7 @@ class TrainConfig:
     # maximum epoch number
     epochs: int = 2
     # batch size
-    bs: int = 2
+    bs: int = 64
     # learning rate (if onecycle, max_lr)
     lr: float = 3e-4
     # lr schedule type: (constant, onecycle)
