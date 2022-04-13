@@ -23,5 +23,5 @@ python train.py --help
 ```
 * Train from yaml configuration, with CLI override
 ```python
-python train.py --config_path train_cfg.yaml --lr 0.001
+python train.py --config_path train_cfg.yaml --lr 0.001 --gpus [7]
 ```
