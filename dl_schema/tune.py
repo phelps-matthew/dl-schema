@@ -4,7 +4,7 @@ import random
 import pprint
 from dataclasses import asdict
 from dl_schema.dataset import MyDataset
-from dl_schema.model import build_model
+from dl_schema.models import build_model
 from dl_schema.cfg import TrainConfig
 from dl_schema.trainer import Trainer
 from dl_schema.utils import set_seed, flatten
@@ -17,14 +17,21 @@ from ray import tune
 from ray.tune.integration.mlflow import MLflowLoggerCallback, mlflow_mixin
 
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format="[%(asctime)s] (%(levelname)s) %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
+
 
 @mlflow_mixin
 def train_fn(config):
     # Pass tune configs into cfg dataclass
-    cfg = Config()
-    cfg.train.lr = config["lr"]
-    cfg.train.weight_decay = config["weight_decay"]
-    cfg.train.batch_size = config["batch_size"]
+    cfg = TrainConfig()
+    cfg.lr = config["lr"]
+    cfg.weight_decay = config["weight_decay"]
+    cfg.bs = config["batch_size"]
 
     # Build model
     logger.info(f"loading model: {cfg.model.name}")
@@ -50,7 +57,7 @@ def tune_function(exp_name):
     tune.run(
         train_fn,
         name="tune_run_name1",
-        num_samples=4,
+        num_samples=1,
         # metric="best_loss",
         config={
             "mlflow": {
@@ -61,7 +68,7 @@ def tune_function(exp_name):
             "batch_size": tune.choice([2, 4, 8, 16]),
             "weight_decay": tune.loguniform(1e-5, 1e-1),
         },
-        resources_per_trial={"cpu": 2, "gpu": 0.5},
+        resources_per_trial={"cpu": 1, "gpu": 0.5},
         scheduler=scheduler,
         local_dir="~/ray_results",
     )
@@ -70,7 +77,7 @@ def tune_function(exp_name):
 def main():
 
     mlflow_tracking_uri = mlflow.get_tracking_uri()
-    
+
     # Set up logging
     logger = logging.getLogger(__name__)
     logging.basicConfig(
@@ -78,10 +85,10 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
     )
-    
+
     # Create config.
-    cfg = Config()
-    
+    cfg = TrainConfig()
+
     # Sample usage, 80%/20% split.
     logger.info("loading datasets")
     train_dataset = MyDataset(split="train", **asdict(cfg.data))
@@ -93,6 +100,8 @@ def main():
         exp_name = "tune_exp_mixin_" + str(n)
     tune_function(exp_name)
 
+
 if __name__ == "__main__":
     cfg = pyrallis.parse(config_class=TrainConfig)
     print(pyrallis.encode(cfg))
+    main()

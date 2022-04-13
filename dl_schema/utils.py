@@ -1,4 +1,4 @@
-"""Utilities used across models in the inference pipeline."""
+"""Utilities used across training repo"""
 import os
 import json
 import shutil
@@ -8,6 +8,7 @@ import numpy as np
 import random
 import torch
 import collections
+from typing import Union
 
 
 def set_seed(seed):
@@ -15,6 +16,21 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def accuracy(y_pred, y):
+    """correct predictions / total"""
+    return y_pred.eq(y.view_as(y_pred)).float().mean()
+
+
+def l2(y_pred, y):
+    """mean batch l2 norm"""
+    return torch.nn.PairwiseDistance(p=2)(y_pred, y).mean()
+
+
+def zero(y, y_pred):
+    """zero criterion"""
+    return torch.tensor([0.0], dtype=torch.float32).to(y.device)
 
 
 def flatten(d, parent_key="", sep="."):
@@ -29,7 +45,7 @@ def flatten(d, parent_key="", sep="."):
     return dict(items)
 
 
-def load_yaml(path: Path):
+def load_yaml(path: Union[Path, str]):
     """deserialize yaml as dict
 
     Args:
