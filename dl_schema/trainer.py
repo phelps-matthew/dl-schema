@@ -166,7 +166,7 @@ class Trainer:
             metric1s.append(metric1.item())
 
             # report progress bar
-            lr_str = f"{curr_lr:.2e}" if curr_lr is not None else "None"
+            lr_str = f"lr {curr_lr:.2e}" if curr_lr is not None else "None"
             pbar.set_description(
                 f"({split}) epoch {epoch} iter {it}: {split} loss {loss.item():.6e} "
                 + lr_str
