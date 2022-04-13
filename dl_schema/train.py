@@ -66,6 +66,8 @@ def main():
 
         # initialize Trainer
         logger.info("initializing trainer")
+        if train_dataset is None and test_dataset is None:
+            logger.info("no datasets found, check that MNIST data exists")
         trainer = Trainer(model, cfg, train_dataset, test_dataset)
 
         # log params, state dicts, and relevant training scripts to mlflow
