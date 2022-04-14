@@ -71,10 +71,10 @@ class DataConfig:
     """config for model specification"""
 
     # root dir of train dataset
-    train_root: Union[str, Path] = "./data/processed/train"
+    train_tfrecords_path: Optional[Union[str, Path]] = "./data/tfrecords/train.tfrecords"
     # root dir of test dataset
-    test_root: Optional[Union[Path, str]] = "./data/processed/test"
-    # shuffle dataloaders
+    test_tfrecords_path: Optional[Union[Path, str]] = "./data/tfrecords/test.tfrecords"
+    # shuffle dataset
     shuffle: bool = True
 
 

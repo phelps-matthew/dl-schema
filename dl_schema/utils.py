@@ -1,7 +1,5 @@
 """Utilities used across training repo"""
-import os
 import json
-import shutil
 from pathlib import Path
 import yaml
 import numpy as np
@@ -9,6 +7,7 @@ import random
 import torch
 import collections
 from typing import Union
+import tensorflow as tf
 
 
 def set_seed(seed):
@@ -16,6 +15,30 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+def parse_fn(example_proto):
+    """parse single example proto from tfrecords"""
+    features = {
+        "height": tf.io.FixedLenFeature([], tf.int64),
+        "width": tf.io.FixedLenFeature([], tf.int64),
+        "depth": tf.io.FixedLenFeature([], tf.int64),
+        "digit_id": tf.io.FixedLenFeature([], tf.int64),
+        "image_raw": tf.io.FixedLenFeature([], tf.string),
+    }
+    features_parsed = tf.io.parse_single_example(example_proto, features)
+    # decode ints
+    label = tf.cast(features_parsed["digit_id"], tf.int32)
+    width = tf.cast(features_parsed["width"], tf.int32)
+    height = tf.cast(features_parsed["height"], tf.int32)
+    depth = tf.cast(features_parsed["depth"], tf.int32)
+    # decode image
+    image = tf.io.decode_raw(features_parsed["image_raw"], tf.uint8)
+    image = tf.reshape(image, [height, width, depth])
+    image = tf.cast(image, tf.float32)
+    # normalize to zero mean and unit std
+    image = tf.image.per_image_standardization(image)
+
+    return image, label
 
 
 def accuracy(y_pred, y):

@@ -12,6 +12,8 @@ from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
 from torch.utils.data.dataloader import DataLoader
 import torchvision
 from tqdm import tqdm
+import tensorflow as tf
+import tensorflow_addons as tfa
 
 from dl_schema.utils import configure_adamw
 
@@ -52,8 +54,13 @@ class Trainer:
             self.optimizer = None
             self.cfg.load_optimizer = False
         else:
-            self.optimizer = configure_adamw(self.model, self.cfg)
             self.set_scheduler(steps=len(self.train_loader))
+            self.optimizer = tfa.optimizers.AdamW(
+                weight_decay=self.cfg.weight_decay,
+                learning_rate=self.cfg.lr,
+                beta_1=self.cfg.betas[0],
+                beta_2=self.cfg.betas[1],
+            )
 
         # initialize best loss for ckpt saving
         self.best_epoch_loss = float("inf")
@@ -71,6 +78,9 @@ class Trainer:
             drop_last=True,
         )
         return loader
+
+    def create_optimizer(self):
+
 
     def set_scheduler(self, steps):
         """create lr scheduler; steps argument required for onecycle"""
@@ -130,7 +140,7 @@ class Trainer:
         is_train = split == "train"
         epoch = self.curr_epoch
         self.model.train() if is_train else self.model.eval()
-        loader = self.train_loader if is_train else self.test_loader
+        dataset = self.train_dataset if is_train else self.test_dataset
 
         # initialize running lists of quantities to be logged
         losses, metric1s = [], []

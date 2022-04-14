@@ -2,6 +2,7 @@
 import logging
 import os
 from pathlib import Path
+import tensorflow as tf
 
 import mlflow
 import pyrallis
@@ -10,7 +11,7 @@ from dl_schema.cfg import TrainConfig
 from dl_schema.dataset import MNISTDataset
 from dl_schema.models import build_model
 from dl_schema.trainer import Trainer
-from dl_schema.utils import flatten, set_seed
+from dl_schema.utils import flatten, set_seed, parse_fn
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -36,18 +37,17 @@ def main():
     logger.info("loading datasets")
     train_dataset, test_dataset = None, None
     if (
-        cfg.data.train_root is not None
-        and Path(cfg.data.train_root).expanduser().exists()
+        cfg.data.train_tfrecords_path is not None
+        and Path(cfg.data.train_tfrecords_path).expanduser().exists()
     ):
-        train_dataset = MNISTDataset(split="train", cfg=cfg)
+        train_dataset = tf.data.TFRecordDataset(cfg.data.train_tfrecords_path).map(parse_fn)
     if (
-        cfg.data.test_root is not None
-        and Path(cfg.data.test_root).expanduser().exists()
+        cfg.data.test_tfrecords_path is not None
+        and Path(cfg.data.test_tfrecords_path).expanduser().exists()
     ):
-        test_dataset = MNISTDataset(split="test", cfg=cfg)
+        test_dataset = tf.data.TFRecordDataset(cfg.data.test_tfrecords_path).map(parse_fn)
 
-    # create experiment
-    # if experiment does not exist, create one
+    # create experiment - if experiment does not exist, create one
     if mlflow.get_experiment_by_name(cfg.exp_name) is None:
         logger.info(f"creating mlflow experiment: {cfg.exp_name}")
         exp_id = mlflow.create_experiment(cfg.exp_name)
