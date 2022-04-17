@@ -37,7 +37,7 @@ class Trainer:
         # configure optimizer
         if self.test_only:
             self.optimizer = None
-            self.cfg.load_optimizer = False
+            self.cfg.load_optim_pth = None
         else:
             self.set_scheduler(self.train_steps)
             self.optimizer = tfa.optimizers.AdamW(
@@ -75,7 +75,7 @@ class Trainer:
 
     def save_model(self, filename="last"):
         """save model weights and optimizer"""
-        # NOTE: saving current epoch and best loss not supported in torch branch
+        # NOTE: saving current epoch and best loss supported in torch branch
         weight_path = self.ckpt_root / f"{filename}_weights.h5"
         optim_path = self.ckpt_root / f"{filename}_optim.npy"
         if self.verbose:
