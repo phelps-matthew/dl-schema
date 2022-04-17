@@ -127,13 +127,13 @@ class Trainer:
             # forward the model, calculate loss
             if is_train:
                 with tf.GradientTape() as tape:
-                    y_pred = self.model(x, training=is_train)
+                    y_pred = self.model(x, training=True)
                     loss = self.cfg.loss(y, y_pred)
                 # backward step
                 grads = tape.gradient(loss, self.model.trainable_weights)
                 self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
             else:
-                y_pred = self.model(x, training=is_train)
+                y_pred = self.model(x, training=False)
                 loss = self.cfg.loss(y, y_pred)
 
             # calculate relevant metrics
@@ -145,10 +145,9 @@ class Trainer:
             metric1s.append(metric1.numpy())
 
             # report progress bar
-            lr_str = f"lr {curr_lr:.2e}" if curr_lr is not None else ""
             pbar.set_description(
                 f"({split}) epoch {epoch} iter {it}: {split} loss {loss.numpy():.6e} "
-                + lr_str
+                + f"lr {curr_lr:.2e}"
             )
 
             # log batch quantities

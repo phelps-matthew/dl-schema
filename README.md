@@ -39,7 +39,7 @@ mlflow ui
 # to set host and port
 mlflow ui --host 0.0.0.0 --port 8080
 ```
-* Serialize dataclass train config to yaml, outputs `train_cfg.yaml`
+* Serialize dataclass train config to yaml, outputting `train_cfg.yaml`
 ```python
 python cfg.py
 ```

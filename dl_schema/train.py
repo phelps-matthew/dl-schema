@@ -23,6 +23,7 @@ logging.basicConfig(
 
 
 def main():
+    # expose argparsing CLI and instantiate train config dataclass
     cfg = pyrallis.parse(config_class=TrainConfig)
 
     # make deterministic

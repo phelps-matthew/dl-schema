@@ -12,7 +12,7 @@ import tensorflow_addons as tfa
 from dl_schema.utils import ConstantSchedule, accuracy, l2, zero
 
 # NOTE: Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the conveinent 
-# ability to ## be able to use callable classes and functions as dataclass fields, e.g. `cfg.loss(y_pred, y)`
+# ability to be able to use callable classes and functions as dataclass fields, e.g. `cfg.loss(y_pred, y)`
 
 class Wrap:
     """wrapper for serializing/deserializing classes"""
