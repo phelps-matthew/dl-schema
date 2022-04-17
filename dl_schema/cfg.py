@@ -11,8 +11,9 @@ import tensorflow_addons as tfa
 
 from dl_schema.utils import ConstantSchedule, accuracy, l2, zero
 
-## Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the conveinent ability to
-## be able to use callable classes and functions as dataclass fields, e.g. `cfg.loss(y_pred, y)`
+# NOTE: Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the conveinent 
+# ability to ## be able to use callable classes and functions as dataclass fields, e.g. `cfg.loss(y_pred, y)`
+
 class Wrap:
     """wrapper for serializing/deserializing classes"""
 
@@ -147,8 +148,6 @@ class TrainConfig:
     loss: Criterion = Criterion.crossentropy
     # metric function 1: (l1, l2, mse, zero)
     metric1: Criterion = Criterion.accuracy
-    # enable ray tune
-    tune: bool = False
 
 
 if __name__ == "__main__":
