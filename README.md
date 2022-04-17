@@ -7,11 +7,17 @@ git clone https://github.com/phelps-matthew/dl-schema.git
 cd dl-schema
 pip install -e .
 ```
+### Dependencies
+```
+pip install -U tensorflow
+pip install tensorflow-addons mlflow pyrallis pandas numpy tqdm pillow matplotlib
+```
 
 ## Usage
-* Download and extract MNIST data set
+* Download the MNIST data set, extract, and write to tfrecords
 ```python
 python /data/create_mnist_dataset.py
+python /data/write_tfrecords.py
 ```
 * Train small CNN model
 ```python
@@ -25,3 +31,4 @@ python train.py --help
 ```python
 python train.py --config_path train_cfg.yaml --lr 0.001 --gpus [7]
 ```
+
