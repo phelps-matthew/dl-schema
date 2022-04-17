@@ -16,8 +16,9 @@ pip install tensorflow-addons mlflow pyrallis pandas numpy tqdm pillow matplotli
 ## Usage
 * Download the MNIST data set, extract, and write to tfrecords
 ```python
-python /data/create_mnist_dataset.py
-python /data/write_tfrecords.py
+cd data
+python create_mnist_dataset.py
+python write_tfrecords.py
 ```
 * Train small CNN model
 ```python
