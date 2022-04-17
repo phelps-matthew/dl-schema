@@ -8,7 +8,6 @@ import mlflow
 import numpy as np
 from ray import tune
 import torch
-from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
 from torch.utils.data.dataloader import DataLoader
 import torchvision
 from tqdm import tqdm
@@ -74,9 +73,8 @@ class Trainer:
 
     def set_scheduler(self, steps):
         """create lr scheduler; steps argument required for onecycle"""
-        assert self.cfg.lr_method.name in {"onecycle", "constant"}
         if self.cfg.lr_method.name == "onecycle":
-            self.scheduler = OneCycleLR(
+            self.scheduler = self.cfg.lr_method(
                 self.optimizer,
                 self.cfg.lr,
                 steps_per_epoch=steps,
@@ -85,7 +83,7 @@ class Trainer:
                 final_div_factor=self.cfg.onecycle_final_div_factor,
             )
         else:
-            self.scheduler = LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1)
+            self.scheduler = self.cfg.lr_method(self.optimizer, lr_lambda=lambda epoch: 1)
 
     def save_model(self, path="last.pt", loss=None, as_artifact=True):
         """save model state dict, optim state dict, epoch and loss"""
@@ -148,7 +146,7 @@ class Trainer:
                 losses.append(loss.item())
 
             # get current learning rate before optim step
-            curr_lr = self.optimizer.param_groups[0]["lr"] if is_train else None
+            curr_lr = self.optimizer.param_groups[0]["lr"]
 
             # backward step
             if is_train:
@@ -166,10 +164,9 @@ class Trainer:
             metric1s.append(metric1.item())
 
             # report progress bar
-            lr_str = f"lr {curr_lr:.2e}" if curr_lr is not None else " "
             pbar.set_description(
                 f"({split}) epoch {epoch} iter {it}: {split} loss {loss.item():.6e} "
-                + lr_str
+                + f"lr {curr_lr:.2e}"
             )
 
             # log batch quantities

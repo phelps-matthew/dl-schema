@@ -4,15 +4,15 @@ the dataset must implement __len__ and __getitem__.
 
 Torch Dataloaders are iterables that abstract batching, shuffling, and multiprocessing.
 """
-from torch.utils.data import Dataset
-from torchvision.io import read_image
-from torchvision import transforms
-from dl_schema.utils import load_yaml
-from dl_schema.cfg import TrainConfig
 from pathlib import Path
-import numpy as np
+
 from PIL import Image
+import numpy as np
 import pandas as pd
+from torch.utils.data import Dataset
+from torchvision import transforms
+
+from dl_schema.cfg import TrainConfig
 
 
 class MNISTDataset(Dataset):
@@ -59,7 +59,6 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
 
-    # Form dataloaders. ToTensor scales image pixels to [0.0, 1.0] floats.
     train_data = MNISTDataset(split="train")
     test_data = MNISTDataset(split="test")
     print(train_data[0])

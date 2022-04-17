@@ -84,7 +84,7 @@ class LogConfig:
 
     # mlflow tracking uri
     uri: Optional[str] = "~/dev/spec21/spec21/keypoint_regression/mlruns"
-    # toggle asynchronous logging (experimental)
+    # toggle asynchronous logging (not implemented in dl_schema)
     enable_async: bool = True
     # frequency to log batch quantities
     batch_freq: int = 1
