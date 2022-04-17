@@ -1,5 +1,5 @@
 # dl-schema
-A deep learning training template
+A deep learning training template constructed as a minimal working MNIST example. Utilizes dataclasses as flexible train configs and mlflow for analytics and artifact logging.
 
 ## Install
 ```
