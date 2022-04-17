@@ -14,7 +14,7 @@ pip install tensorflow-addons mlflow pyrallis pandas numpy tqdm pillow matplotli
 ```
 
 ## Usage
-* Download the MNIST data set, extract, and write to tfrecords
+* Download the MNIST dataset, extract, and write to tfrecords
 ```python
 cd data
 python create_mnist_dataset.py
@@ -31,5 +31,16 @@ python train.py --help
 * Train from yaml configuration, with CLI override
 ```python
 python train.py --config_path train_cfg.yaml --lr 0.001 --gpus [7]
+```
+* Start mlflow ui to visualize results
+```
+# navgiate to dl_schema root directory containing `mlruns`
+mlflow ui
+# to set host and port
+mlflow ui --host 0.0.0.0 --port 8080
+```
+* Serialize dataclass train config to yaml, outputs `train_cfg.yaml`
+```python
+python cfg.py
 ```
 
