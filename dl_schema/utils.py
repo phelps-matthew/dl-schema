@@ -1,59 +1,70 @@
 """Utilities used across training repo"""
-import json
-from pathlib import Path
-import yaml
-import numpy as np
-import random
-import torch
 import collections
+import json
+import math
+from pathlib import Path
+import random
 from typing import Union
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import ImageGrid
+import numpy as np
 import tensorflow as tf
+import torch
+import yaml
 
 
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    tf.random.set_seed(seed)
+    tf.keras.utils.set_random_seed(seed)
 
-def parse_fn(example_proto):
-    """parse single example proto from tfrecords"""
-    features = {
-        "height": tf.io.FixedLenFeature([], tf.int64),
-        "width": tf.io.FixedLenFeature([], tf.int64),
-        "depth": tf.io.FixedLenFeature([], tf.int64),
-        "digit_id": tf.io.FixedLenFeature([], tf.int64),
-        "image_raw": tf.io.FixedLenFeature([], tf.string),
-    }
-    features_parsed = tf.io.parse_single_example(example_proto, features)
-    # decode ints
-    label = tf.cast(features_parsed["digit_id"], tf.int32)
-    width = tf.cast(features_parsed["width"], tf.int32)
-    height = tf.cast(features_parsed["height"], tf.int32)
-    depth = tf.cast(features_parsed["depth"], tf.int32)
-    # decode image
-    image = tf.io.decode_raw(features_parsed["image_raw"], tf.uint8)
-    image = tf.reshape(image, [height, width, depth])
-    image = tf.cast(image, tf.float32)
-    # normalize to zero mean and unit std
-    image = tf.image.per_image_standardization(image)
 
-    return image, label
+def image_grid(x: np.ndarray):
+    """Return a single numpy array representing a rendered grid of images in a batch"""
+    bs, _, _, _ = x.shape
+    # make image grid square
+    n_rows = math.ceil(math.sqrt(bs))
+    fig = plt.figure(figsize=(5, 5))
+    grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_rows), axes_pad=0.05)
+    for i in range(bs):
+        grid[i].imshow(x[i], cmap="gray")
+    # remove axes ticks and labels
+    plt.setp(grid, xticks=[], yticks=[])
+    # render image to canvas
+    fig.canvas.draw()
+    # save matplotlib figure to np.ndarray
+    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    # reshape from (n) to (3, H, W)
+    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    # clear figure and axes for next image
+    plt.cla()
+    plt.close("all")
+    return data
 
 
 def accuracy(y_pred, y):
     """correct predictions / total"""
-    return y_pred.eq(y.view_as(y_pred)).float().mean()
+    return tf.math.reduce_mean(tf.cast(tf.equal(y_pred, y), tf.float32))
 
 
 def l2(y_pred, y):
     """mean batch l2 norm"""
-    return torch.nn.PairwiseDistance(p=2)(y_pred, y).mean()
+    return tf.math.reduce_mean(tf.norm(y_pred-y, ord='euclidean'))
 
 
 def zero(y, y_pred):
     """zero criterion"""
-    return torch.tensor([0.0], dtype=torch.float32).to(y.device)
+    return tf.constant(0.0, dtype=tf.float32)
+
+
+class ConstantSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, lr):
+        self.lr = lr
+
+    def __call__(self, step):
+        return tf.constant(self.lr)
 
 
 def flatten(d, parent_key="", sep="."):
@@ -98,58 +109,3 @@ def load_json(json_file):
         unserialized_data = json.load(handle)
         handle.close()
         return unserialized_data
-
-
-# May need a better home
-def configure_adamw(model, cfg):
-    """
-    This long function is unfortunately doing something very simple and is being
-    very defensive: We are separating out all parameters of the model into two
-    buckets: those that will experience weight decay for regularization and those
-    that won't (biases, and layernorm/embedding weights).  We are then returning the
-    PyTorch optimizer object.
-    """
-    # separate out all parameters to those that will and won't experience
-    # regularizing weight decay
-    decay = set()
-    no_decay = set()
-    whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d)
-    blacklist_weight_modules = (torch.nn.BatchNorm2d,)
-    for mn, m in model.named_modules():
-        for pn, p in m.named_parameters():
-            fpn = "%s.%s" % (mn, pn) if mn else pn  # full param name
-
-            if pn.endswith("bias"):
-                # all biases will not be decayed
-                no_decay.add(fpn)
-            elif pn.endswith("weight") and isinstance(m, whitelist_weight_modules):
-                # weights of whitelist modules will be weight decayed
-                decay.add(fpn)
-            elif pn.endswith("weight") and isinstance(m, blacklist_weight_modules):
-                # weights of blacklist modules will NOT be weight decayed
-                no_decay.add(fpn)
-
-    # validate that we considered every parameter
-    param_dict = {pn: p for pn, p in model.named_parameters()}
-    inter_params = decay & no_decay
-    union_params = decay | no_decay
-    assert (
-        len(inter_params) == 0
-    ), f"parameters {inter_params} made it into both decay/no_decay sets!"
-    assert (
-        len(param_dict.keys() - union_params) == 0
-    ), f"parameters {param_dict.keys() - union_params} were not separated into either decay/no_decay set!"
-
-    # create the pytorch optimizer object
-    optim_groups = [
-        {
-            "params": [param_dict[pn] for pn in sorted(list(decay))],
-            "weight_decay": cfg.weight_decay,
-        },
-        {
-            "params": [param_dict[pn] for pn in sorted(list(no_decay))],
-            "weight_decay": 0.0,
-        },
-    ]
-    optimizer = torch.optim.AdamW(optim_groups, lr=cfg.lr, betas=cfg.betas)
-    return optimizer

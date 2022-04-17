@@ -1,21 +1,15 @@
 """Sample training loop."""
 import logging
-import math
 from pathlib import Path
 from typing import Literal
 
 import mlflow
 import numpy as np
-from ray import tune
-import torch
-from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
-from torch.utils.data.dataloader import DataLoader
-import torchvision
-from tqdm import tqdm
 import tensorflow as tf
 import tensorflow_addons as tfa
+from tqdm import tqdm
 
-from dl_schema.utils import configure_adamw
+from dl_schema.utils import image_grid
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +17,13 @@ logger = logging.getLogger(__name__)
 class Trainer:
     """train or evaluate a dataset over n epochs"""
 
-    def __init__(self, model, cfg, train_dataset, test_dataset=None, verbose=True):
+    def __init__(self, model, cfg, train_dataset=None, test_dataset=None, verbose=True):
         self.cfg = cfg
         self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
+        self.train_steps = self.get_dataset_size(self.train_dataset)
+        self.test_steps = self.get_dataset_size(self.test_dataset)
         self.test_only = self.train_dataset is None
         self.verbose = verbose
         self.tune = self.cfg.tune
@@ -39,163 +35,135 @@ class Trainer:
         self.ckpt_root = Path(mlflow_artifact_path) / "checkpoints"
         (self.ckpt_root).mkdir(parents=True, exist_ok=True)
 
-        # set gpu device if available
-        self.device = "cpu"
-        if torch.cuda.is_available():
-            self.device = torch.cuda.current_device()
-            self.model = self.model.to(self.device)
-
-        # set datloaders
-        self.train_loader = self.create_dataloader(train=True)
-        self.test_loader = self.create_dataloader(train=False)
-
         # configure optimizer
         if self.test_only:
             self.optimizer = None
             self.cfg.load_optimizer = False
         else:
-            self.set_scheduler(steps=len(self.train_loader))
+            self.set_scheduler(self.train_steps)
             self.optimizer = tfa.optimizers.AdamW(
                 weight_decay=self.cfg.weight_decay,
-                learning_rate=self.cfg.lr,
-                beta_1=self.cfg.betas[0],
-                beta_2=self.cfg.betas[1],
+                learning_rate=self.scheduler,
+                beta_1=self.cfg.adam_beta1,
+                beta_2=self.cfg.adam_beta2,
             )
 
         # initialize best loss for ckpt saving
         self.best_epoch_loss = float("inf")
 
-    def create_dataloader(self, train=True):
-        dataset = self.train_dataset if train else self.test_dataset
+        # pass a dummy data sample through model to create weights (oh keras..)
+        if not self.test_only:
+            x, _ = next(iter(self.train_dataset))
+            self.model(x)
+
+    def get_dataset_size(self, dataset):
+        """iterate over dataset to obtain number of batches (steps)"""
         if dataset is None:
-            return None
-        loader = DataLoader(
-            dataset,
-            shuffle=self.cfg.data.shuffle,
-            pin_memory=True,
-            batch_size=self.cfg.bs,
-            num_workers=self.cfg.num_workers,
-            drop_last=True,
-        )
-        return loader
+            return 0
+        return sum(1 for _ in dataset)
 
-    def create_optimizer(self):
-
-
-    def set_scheduler(self, steps):
-        """create lr scheduler; steps argument required for onecycle"""
-        assert self.cfg.lr_method.name in {"onecycle", "constant"}
-        if self.cfg.lr_method.name == "onecycle":
-            self.scheduler = OneCycleLR(
-                self.optimizer,
-                self.cfg.lr,
-                steps_per_epoch=steps,
-                epochs=self.cfg.epochs - self.curr_epoch,
-                div_factor=self.cfg.onecycle_div_factor,
-                final_div_factor=self.cfg.onecycle_final_div_factor,
+    def set_scheduler(self, total_steps=None):
+        """create lr scheduler; total steps argument required for cyclic lr"""
+        if self.cfg.lr_method.name == "cyclic":
+            self.scheduler = self.cfg.lr_method(
+                initial_learning_rate=self.cfg.cyclic_lr_initial,
+                maximal_learning_rate=self.cfg.lr,
+                scale_fn=lambda x: 1 / (2.0 ** (x - 1)),
+                step_size=total_steps // self.cfg.cyclic_n_cycles,
             )
         else:
-            self.scheduler = LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1)
+            self.scheduler = self.cfg.lr_method(lr=self.cfg.lr)
 
-    def save_model(self, path="last.pt", loss=None, as_artifact=True):
-        """save model state dict, optim state dict, epoch and loss"""
-        save_path = self.ckpt_root / path if as_artifact else path
+    def save_model(self, filename="last"):
+        """save model weights and optimizer"""
+        # NOTE: saving current epoch and best loss not supported in torch branch
+        weight_path = self.ckpt_root / f"{filename}_weights.h5"
+        optim_path = self.ckpt_root / f"{filename}_optim.npy"
         if self.verbose:
-            logger.info(f"saving {save_path}")
-        torch.save(
-            {
-                "model_state_dict": self.model.state_dict(),
-                "optimizer_state_dict": self.optimizer.state_dict(),
-                "scheduler_state_dict": self.scheduler.state_dict(),
-                "epoch": self.curr_epoch,
-                "loss": loss,
-            },
-            save_path,
+            logger.info(f"saving weights to {weight_path}")
+            logger.info(f"saving optimizer to {optim_path}")
+        self.model.save_weights(self.ckpt_root / f"{filename}_weights.h5")
+        np.save(
+            optim_path,
+            np.array(self.optimizer.get_weights(), dtype=object),
+            allow_pickle=True,
         )
 
     def load_model(self):
-        """load model state dict, optim state dict, epoch and loss"""
-        ckpt_path = Path(self.cfg.load_ckpt_pth).expanduser().resolve()
-        ckpt = torch.load(ckpt_path)
+        """load model weights and (optionally) optimizer"""
+        # NOTE: resuming from last or best epoch supported in torch branch
+        # load weights
+        weights_path = Path(self.cfg.load_weights_pth).expanduser().resolve()
+        logger.info(f"loading weights from {weights_path}")
+        self.model.load_weights(weights_path)
 
-        # load optimizer
-        if self.cfg.load_optimizer:
-            logger.info(f"loading optimizer from {ckpt_path}")
-            self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-        self.best_epoch_loss = ckpt["loss"]
-
-        # only update scheduler and epoch counter if resuming
-        if self.cfg.resume:
-            logger.info(f"resuming from epoch: {ckpt['epoch']}")
-            self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
-            self.curr_epoch = ckpt["epoch"] + 1
-
-        # load parameters
-        logger.info(f"loading model params from {ckpt_path}")
-        self.model.load_state_dict(ckpt["model_state_dict"])
+        # load optimizer (optional)
+        if self.cfg.load_optim_pth is not None:
+            optim_path = Path(self.cfg.load_optim_pth).expanduser().resolve()
+            logger.info(f"loading optimizer from {optim_path}")
+            # nonsense to load optimizer
+            optim_weights = np.load(optim_path, allow_pickle=True)
+            grad_vars = self.model.trainable_weights
+            zero_grads = [tf.zeros_like(w) for w in grad_vars]
+            self.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+            self.optimizer.set_weights(optim_weights)
 
     def run_epoch(self, split: Literal["train", "test"] = "train"):
         """train or evalauate on a single epoch, returning mean epoch loss"""
-        assert split in {"train", "test"}
         is_train = split == "train"
         epoch = self.curr_epoch
-        self.model.train() if is_train else self.model.eval()
         dataset = self.train_dataset if is_train else self.test_dataset
+        steps = self.train_steps if is_train else self.test_steps
 
         # initialize running lists of quantities to be logged
         losses, metric1s = [], []
 
         # train/test loop
-        pbar = tqdm(enumerate(loader), total=len(loader))
+        pbar = tqdm(enumerate(dataset), total=steps)
         for it, (x, y) in pbar:
-            x = x.to(self.device)
-            y = y.to(self.device)
+
+            # get current learning rate before optim step (for logging)
+            curr_lr = self.optimizer.lr(self.optimizer.iterations).numpy()
 
             # forward the model, calculate loss
-            with torch.set_grad_enabled(is_train):
-                y_pred = self.model(x)
-                loss = self.cfg.loss(y_pred, y)
-                losses.append(loss.item())
-
-            # get current learning rate before optim step
-            curr_lr = self.optimizer.param_groups[0]["lr"] if is_train else None
-
-            # backward step
             if is_train:
-                self.model.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-                self.scheduler.step()
+                with tf.GradientTape() as tape:
+                    y_pred = self.model(x, training=is_train)
+                    loss = self.cfg.loss(y, y_pred)
+                # backward step
+                grads = tape.gradient(loss, self.model.trainable_weights)
+                self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+            else:
+                y_pred = self.model(x, training=is_train)
+                loss = self.cfg.loss(y, y_pred)
 
             # calculate relevant metrics
-            y_pred_digit = y_pred.argmax(dim=1, keepdim=True)
+            y_pred_digit = tf.math.argmax(y_pred, axis=-1, output_type=tf.int32)
             metric1 = self.cfg.metric1(y_pred_digit, y)
 
             # append losses and metrics to running lists
-            losses.append(loss.item())
-            metric1s.append(metric1.item())
+            losses.append(loss.numpy())
+            metric1s.append(metric1.numpy())
 
             # report progress bar
-            lr_str = f"lr {curr_lr:.2e}" if curr_lr is not None else " "
+            lr_str = f"lr {curr_lr:.2e}" if curr_lr is not None else ""
             pbar.set_description(
-                f"({split}) epoch {epoch} iter {it}: {split} loss {loss.item():.6e} "
+                f"({split}) epoch {epoch} iter {it}: {split} loss {loss.numpy():.6e} "
                 + lr_str
             )
 
             # log batch quantities
-            step = it + epoch * len(loader)
+            step = it + epoch * steps
             if step % self.cfg.log.batch_freq == 0:
                 suffix = f"_{split}_batch"
                 if is_train:
                     mlflow.log_metric("lr" + suffix, curr_lr, step)
-                mlflow.log_metric("loss" + suffix, loss.item(), step)
-                mlflow.log_metric(self.cfg.metric1.name + suffix, metric1.item(), step)
+                mlflow.log_metric("loss" + suffix, loss.numpy(), step)
+                mlflow.log_metric(self.cfg.metric1.name + suffix, metric1.numpy(), step)
                 # log grid of batch images
-                n_rows = math.ceil(math.sqrt(self.cfg.bs))  # actually n_cols
-                grid = torchvision.utils.make_grid(
-                    x.cpu(), normalize=True, nrow=n_rows
-                ).permute(1, 2, 0)
-                mlflow.log_image(grid.numpy(), f"digits{suffix}.png")
+                if self.cfg.log.image_grid:
+                    grid = image_grid(x.numpy())
+                    mlflow.log_image(grid, f"digits{suffix}.png")
 
             # stop training early based on steps
             if self.cfg.steps is not None and step >= self.cfg.steps:
@@ -231,20 +199,10 @@ class Trainer:
                         "loss_test-best_epoch", self.best_epoch_loss, epoch
                     )
                     if cfg.save_best:
-                        self.save_model("best.pt", loss=self.best_epoch_loss)
+                        self.save_model("best")
 
                 # save latest model
                 if cfg.save_last:
-                    self.save_model("last.pt", loss=test_epoch_loss)
-
-                # Here we save a checkpoint. It is automatically registered with
-                # Ray Tune and will potentially be passed as the `checkpoint_dir`
-                # parameter in future iterations.
-                if self.tune:
-                    with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
-                        path = Path(checkpoint_dir) / "last.pt"
-                        # print(f"SAVING CHECKPOINT {path}")
-                        self.save_model(path, loss=test_epoch_loss)
-                        tune.report(loss=test_epoch_loss, epoch=epoch)
+                    self.save_model("last")
 
         return self.best_epoch_loss
