@@ -18,10 +18,6 @@ class BabyCNN(tf.keras.layers.Layer):
         self.fc1 = Dense(self.cfg.fc_units)
         self.fc2 = Dense(self.cfg.out_features)
 
-    def get_config(self):
-        config = super().get_config()
-        return config
-
     def call(self, x):
         x = self.conv1(x)
         x = tf.nn.relu(x)

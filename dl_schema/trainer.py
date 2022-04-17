@@ -26,7 +26,6 @@ class Trainer:
         self.test_steps = self.get_dataset_size(self.test_dataset)
         self.test_only = self.train_dataset is None
         self.verbose = verbose
-        self.tune = self.cfg.tune
         self.curr_epoch = 0
         self.scheduler = None
 
