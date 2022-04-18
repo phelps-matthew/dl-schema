@@ -29,6 +29,10 @@ class Trainer:
         self.curr_epoch = 0
         self.scheduler = None
 
+        # toggle eager / graph mode; this toggles behavior of tf.function
+        # wrapper on train_step and test_step
+        tf.config.run_functions_eagerly(self.cfg.eager)
+
         # set mlflow paths for model/optim saving
         mlflow_artifact_path = mlflow.active_run().info.artifact_uri[7:]
         self.ckpt_root = Path(mlflow_artifact_path) / "checkpoints"
@@ -107,6 +111,26 @@ class Trainer:
             self.optimizer.apply_gradients(zip(zero_grads, grad_vars))
             self.optimizer.set_weights(optim_weights)
 
+    @tf.function
+    def train_step(self, x, y):
+        """compile train step into static graph"""
+        # forward model
+        with tf.GradientTape() as tape:
+            y_pred = self.model(x, training=True)
+            loss = self.cfg.loss(y, y_pred)
+        # backward step
+        grads = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+        return y_pred, loss
+
+    @tf.function
+    def test_step(self, x, y):
+        """compile test step into static graph"""
+        # foward model
+        y_pred = self.model(x, training=False)
+        loss = self.cfg.loss(y, y_pred)
+        return y_pred, loss
+
     def run_epoch(self, split: Literal["train", "test"] = "train"):
         """train or evalauate on a single epoch, returning mean epoch loss"""
         is_train = split == "train"
@@ -124,17 +148,11 @@ class Trainer:
             # get current learning rate before optim step (for logging)
             curr_lr = self.optimizer.lr(self.optimizer.iterations).numpy()
 
-            # forward the model, calculate loss
+            # forward model, perform backward step if train
             if is_train:
-                with tf.GradientTape() as tape:
-                    y_pred = self.model(x, training=True)
-                    loss = self.cfg.loss(y, y_pred)
-                # backward step
-                grads = tape.gradient(loss, self.model.trainable_weights)
-                self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+                y_pred, loss = self.train_step(x, y)
             else:
-                y_pred = self.model(x, training=False)
-                loss = self.cfg.loss(y, y_pred)
+                y_pred, loss = self.test_step(x, y)
 
             # calculate relevant metrics
             y_pred_digit = tf.math.argmax(y_pred, axis=-1, output_type=tf.int32)

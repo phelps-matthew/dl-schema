@@ -112,8 +112,8 @@ class TrainConfig:
     gpus: List[int] = field(default_factory=lambda: [-1])
     # random seed, set to make deterministic
     seed: int = 42
-    # number of cpu workers in dataloader
-    num_workers: int = 4
+    # eager mode toggle
+    eager: bool = True
     # maximum epoch number
     epochs: int = 2
     # batch size
