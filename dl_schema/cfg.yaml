@@ -8,6 +8,7 @@ data:
   shuffle: true
   test_tfrecords_path: ./data/tfrecords/test.tfrecords
   train_tfrecords_path: ./data/tfrecords/train.tfrecords
+eager: true
 epochs: 2
 exp_name: debug
 gpus:
@@ -29,12 +30,10 @@ model:
   in_channels: 1
   model_class: BabyCNN
   out_features: 10
-num_workers: 4
 run_name: run_0
 save_best: false
 save_init: false
 save_last: false
 seed: 42
 steps: null
-tune: false
 weight_decay: 0.0
