@@ -15,7 +15,7 @@ from dl_schema.utils import ConstantSchedule, accuracy, l2, zero
 # ability to be able to use callable classes and functions as dataclass fields, e.g. `cfg.loss(y_pred, y)`
 
 class Wrap:
-    """wrapper for serializing/deserializing classes"""
+    """wrapper for serializing/deserializing classes/functions"""
 
     def __init__(self, fn):
         self.fn = fn
@@ -88,7 +88,7 @@ class LogConfig:
 
     # toggle asynchronous logging (not supported in dl_schema)
     enable_async: bool = True
-    # frequency to log batch quantities
+    # frequency to log batch metric quantities
     batch_freq: int = 20
     # toggle logging of input image batch grid
     image_grid: bool = False
@@ -153,4 +153,4 @@ class TrainConfig:
 if __name__ == "__main__":
     """test the train config, export to yaml"""
     cfg = pyrallis.parse(config_class=TrainConfig)
-    pyrallis.dump(cfg, open("train_cfg.yaml", "w"))
+    pyrallis.dump(cfg, open("cfg.yaml", "w"))

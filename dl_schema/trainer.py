@@ -1,4 +1,7 @@
-"""Sample training loop."""
+"""
+Sample trainining executer - handles lr schedulers, optimizers, model saving/loading, 
+datasets/generators, train steps, test steps, metrics, losses, etc
+"""
 import logging
 from pathlib import Path
 from typing import Literal
