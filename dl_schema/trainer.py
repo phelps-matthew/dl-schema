@@ -6,7 +6,6 @@ from typing import Literal
 
 import mlflow
 import numpy as np
-from ray import tune
 import torch
 from torch.utils.data.dataloader import DataLoader
 import torchvision
@@ -27,7 +26,6 @@ class Trainer:
         self.test_dataset = test_dataset
         self.test_only = self.train_dataset is None
         self.verbose = verbose
-        self.tune = self.cfg.tune
         self.curr_epoch = 0
         self.scheduler = None
 
@@ -223,15 +221,5 @@ class Trainer:
                 # save latest model
                 if cfg.save_last:
                     self.save_model("last.pt", loss=test_epoch_loss)
-
-                # Here we save a checkpoint. It is automatically registered with
-                # Ray Tune and will potentially be passed as the `checkpoint_dir`
-                # parameter in future iterations.
-                if self.tune:
-                    with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
-                        path = Path(checkpoint_dir) / "last.pt"
-                        # print(f"SAVING CHECKPOINT {path}")
-                        self.save_model(path, loss=test_epoch_loss)
-                        tune.report(loss=test_epoch_loss, epoch=epoch)
 
         return self.best_epoch_loss
