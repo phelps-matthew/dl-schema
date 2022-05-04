@@ -3,14 +3,19 @@ A deep learning training template constructed as a minimal working MNIST example
 
 ## Install
 ```
+# create `schema` conda environment
+conda create -n schema python=3.9 pip
+conda activate schema
+
+# install torch and dependencies, assumes cuda version >= 11.0
+pip install -U pip
+pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
+pip install mlflow pyrallis pandas tqdm pillow
+
+# install dl-schema repo
 git clone https://github.com/phelps-matthew/dl-schema.git
 cd dl-schema
 pip install -e .
-```
-### Dependencies
-```
-pip install -U torch torchvision
-pip install mlflow pyrallis pandas numpy tqdm pillow matplotlib
 ```
 
 ## Usage
