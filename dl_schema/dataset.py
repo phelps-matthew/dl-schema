@@ -54,10 +54,6 @@ class MNISTDataset(Dataset):
 
 if __name__ == "__main__":
     """Test Dataset"""
-    from torch.utils.data import DataLoader
-    from torchvision.transforms import ToTensor
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
 
     train_data = MNISTDataset(split="train")
     test_data = MNISTDataset(split="test")
