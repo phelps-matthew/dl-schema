@@ -19,7 +19,7 @@ pip install -e .
 ```
 
 ## Usage
-* Download and extrac the MNIST dataset
+* Download and extract the MNIST dataset
 ```python
 cd data
 python create_mnist_dataset.py
