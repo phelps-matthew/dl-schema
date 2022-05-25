@@ -62,25 +62,35 @@ def main():
             logger.info("no datasets found, check that MNIST data exists")
         trainer = Trainer(model, cfg, train_dataset, test_dataset, recorder)
 
-        # log params, state dicts, and relevant training scripts to mlflow
-        script_dir = Path(__file__).parent
+        # log config as params and yaml
         cfg_dict = pyrallis.encode(cfg)  # cfg as dict, encoded for yaml
-        recorder.log_artifact(script_dir / "train.py", "archive")
-        recorder.log_artifact(script_dir / "trainer.py", "archive")
-        recorder.log_artifact(script_dir / "dataset.py", "archive")
-        recorder.log_artifact(script_dir / "cfg.py", "archive")
-        recorder.log_artifact(script_dir / "models/babycnn.py", "archive")
         recorder.log_dict(cfg_dict, "archive/cfg.yaml")
         recorder.log_params(flatten(cfg_dict))
+
+        # log relevant source files
+        script_dir = Path(__file__).parent
+        src_files = [
+            "cfg.py",
+            "dataset.py",
+            "recorder.py",
+            "recorder_base.py",
+            "train.py",
+            "trainer.py",
+            "tune.py",
+            "utils.py",
+            "models/babycnn.py",
+        ]
+        for relpath in src_files:
+            recorder.log_artifact(script_dir / relpath, "archive")
 
         # train
         if cfg.load_ckpt_pth:
             trainer.load_model()
-        if cfg.save_init:
+        if cfg.log.save_init:
             trainer.save_model("init.pt")
-        trainer.train()
+        trainer.run()
 
-        # stop mlflow run
+        # stop mlflow run, exit gracefully
         recorder.end_run()
 
 
