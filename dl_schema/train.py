@@ -3,15 +3,14 @@ import logging
 import os
 from pathlib import Path
 
-import mlflow
 import pyrallis
 
 from dl_schema.cfg import TrainConfig
 from dl_schema.dataset import MNISTDataset
 from dl_schema.models import build_model
+from dl_schema.recorder import Recorder
 from dl_schema.trainer import Trainer
 from dl_schema.utils import flatten, set_seed
-from dl_schema.recorder import Recorder
 
 # Set up logging
 logger = logging.getLogger(__name__)

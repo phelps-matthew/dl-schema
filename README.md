@@ -12,6 +12,9 @@ pip install -U pip
 pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
 pip install mlflow pyrallis pandas tqdm pillow
 
+# install hyperparameter search dependencies
+pip install ray[tune] hyperopt
+
 # install dl-schema repo
 git clone https://github.com/phelps-matthew/dl-schema.git
 cd dl-schema
