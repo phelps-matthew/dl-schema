@@ -51,3 +51,8 @@ mlflow ui --host 0.0.0.0 --port 8080
 python cfg.py
 ```
 
+## Hyperparameter Experiments
+* Use ray tune to perform multi-gpu hyperparameter search
+```python
+CUDA_VISIBLE_DEVICES=0,1,2,3 python tune.py --exp_name hyper_search
+```
