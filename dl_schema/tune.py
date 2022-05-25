@@ -137,9 +137,9 @@ def tune_function(cfg):
     def run_fn(config, checkpoint_dir=None, cfg=cfg_dict):
         return run(config, checkpoint_dir, cfg_dict)
 
-    # scheduler = ASHAScheduler(
-    #    metric="loss", mode="min", max_t=cfg_dict["epochs"], grace_period=4
-    # )
+    # default trial names are obscene, lets tame it down
+    def trial_dir_str(trial):
+        return "{}_{}".format(trial.trainable_name, trial.trial_id)
 
     # this reporter omits extraneous mlflow information in progress report
     # also allows tables to persist at low verbose levels
@@ -148,23 +148,21 @@ def tune_function(cfg):
         print_intermediate_tables=True,
     )
 
-    # default trial names are obscene, lets tame it down
-    def trial_dir_str(trial):
-        return "{}_{}".format(trial.trainable_name, trial.trial_id)
+    # enable asynchronous successive halving algorithm scheduler
+    # scheduler = ASHAScheduler(
+    #    metric="loss", mode="min", max_t=cfg_dict["epochs"], grace_period=4
+    # )
 
-    # setup hyperparmeter search
-    mlflow_config = {
-        "tracking_uri": mlflow.get_tracking_uri(),
-        "experiment_name": cfg_dict["exp_name"],
-    }
-
+    # define hyperparmeter search algorithm
     hyperopt_search = HyperOptSearch(metric="loss", mode="min")
 
     config = {
-        "mlflow": mlflow_config,
+        "mlflow": {
+            "tracking_uri": mlflow.get_tracking_uri(),
+            "experiment_name": cfg_dict["exp_name"],
+        },
         "lr": tune.loguniform(1e-7, 1e-2),
-        # "batch_size": tune.choice([4, 8, 16, 32]),
-        "batch_size": tune.choice([2, 3, 4, 5]),
+        "batch_size": tune.choice([4, 8, 16, 32]),
         "weight_decay": tune.loguniform(1e-6, 1e-1),
     }
 
@@ -197,7 +195,7 @@ def setup_experiment(cfg):
     set_seed(cfg.seed)
 
     # disable internal log and print statements convoluting ray cli logs
-    ray.init(log_to_driver=True)
+    ray.init(log_to_driver=False)
 
     # force async to false as this breaks ray tune; force tune
     cfg.log.enable_async = False
