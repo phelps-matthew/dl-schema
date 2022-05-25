@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+from ray import tune
 import torch
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
@@ -30,13 +31,15 @@ class Trainer:
         self.verbose = verbose
         self.curr_step = 0
         self.scheduler = None
+        self.tune = self.cfg.tune
+        self.tune_linked = False
 
         # set mlflow paths for model/optim saving
         if recorder is not None:
             self.ckpt_root = self.recorder.root / "checkpoints"
             (self.ckpt_root).mkdir(parents=True, exist_ok=True)
         else:
-            self.ckpt_root = ""
+            self.ckpt_root = Path("./")
 
         # set gpu device if available
         # TODO: multigpu dataparallel
@@ -185,6 +188,20 @@ class Trainer:
             if self.cfg.log.save_last:
                 self.save_model("last.pt", loss=mean_loss)
 
+        # ray tune
+        if self.tune:
+            # tune automatically creates the checkpoint dir
+            # we must report eval loss back to tune as below
+            with tune.checkpoint_dir(step=self.curr_step) as checkpoint_dir:
+                path = Path(checkpoint_dir) / "last.pt"
+                self.save_model(path, loss=mean_loss)
+                tune.report(loss=mean_loss, step=self.curr_step)
+                # link mlflow articats/tune to tune run directory if unlinked
+                if not self.tune_linked:
+                    tune_root = Path(checkpoint_dir).parent
+                    (self.recorder.root / "tune").symlink_to(tune_root)
+                    self.tune_linked = True
+
     def run(self):
         """iterate over train set and evaluate on val/test set"""
         data_iter = iter(self.train_loader)
@@ -221,10 +238,11 @@ class Trainer:
                 mean_train_loss = float(np.mean(losses))
                 mean_metric1 = float(np.mean(metric1s))
                 losses = []
-                print(
+                train_progress = (
                     f"TRAIN STEP {step}/{self.cfg.train_steps}: "
                     + f"loss {mean_train_loss:.6e} lr {lr:.2e}"
                 )
+                logger.info(train_progress) if self.tune else print(train_progress)
                 train_metrics = {
                     "lr": lr,
                     "loss_train": mean_train_loss,

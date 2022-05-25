@@ -74,7 +74,7 @@ class DataConfig:
     train_root: Union[str, Path] = "./data/processed/train"
     # root dir of test dataset
     test_root: Optional[Union[Path, str]] = "./data/processed/test"
-    # shuffle dataloaders
+    # shuffle train dataloader
     shuffle: bool = True
 
 
@@ -84,12 +84,22 @@ class LogConfig:
 
     # mlflow tracking uri
     uri: Optional[str] = "~/dev/dl-schema/dl_schema/mlruns"
-    # toggle asynchronous logging
+    # toggle asynchronous logging (not compatible with ray tune)
     enable_async: bool = True
     # number of threads to use in async logging (2 threads/core typically)
     num_threads: int = 4
-    # frequency to log batch quantities
-    batch_freq: int = 1
+    # every `train_freq` steps, log training quantities (metrics, single image batch, etc.)
+    train_freq: int = 100
+    # every `test_freq` steps, log test quantities (metrics, single image batch, etc.)
+    test_freq: int = 500
+    # every `save_freq` steps save model checkpoint according to save criteria
+    save_freq: int = 1000
+    # save initial model state
+    save_init: bool = False
+    # save last model state
+    save_last: bool = False
+    # save best model state (early stopping)
+    save_best: bool = False
     # log images
     images: bool = True
 
@@ -114,8 +124,8 @@ class TrainConfig:
     seed: int = 42
     # number of cpu workers in dataloader
     num_workers: int = 4
-    # maximum epoch number
-    epochs: int = 1
+    # number of training steps (weight updates)
+    train_steps: int = int(1e5)
     # batch size
     bs: int = 64
     # learning rate (if onecycle, max_lr)
@@ -130,20 +140,12 @@ class TrainConfig:
     weight_decay: float = 0.0  # only applied on matmul weights
     # adamw momentum parameters
     betas: tuple = (0.9, 0.95)
-    # save initial model state
-    save_init: bool = False
-    # save last model state
-    save_last: bool = False
-    # save best model state (early stopping)
-    save_best: bool = False
     # checkpoint load path
     load_ckpt_pth: Optional[str] = None
     # load optimizer along with weights
     load_optimizer: bool = False
     # resume from last saved epoch in ckpt
     resume: bool = False
-    # maximum number of steps (overrides epochs)
-    steps: Optional[int] = None
     # training loss function : (crossentropy, l1, l2, mse, zero)
     loss: Criterion = Criterion.crossentropy
     # metric function 1: (l1, l2, mse, zero)

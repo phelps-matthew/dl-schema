@@ -1,7 +1,8 @@
 """
-Logging base class for training runs. The philosophy is that each repo will require its own unique
-analytics and thus is to inherit the RecorderBase and implelemnt custom logic. The base class here 
-provides all the common utilities and methods shared among different ML projects.
+Logging base class for training runs. The philosophy is that each repo will require its
+own unique analytics and thus is to inherit the RecorderBase and implement any necessary
+custom logic. The base class here provides many of the common utilities and methods
+shared among different ML projects.
 """
 from functools import partial
 import logging
@@ -97,7 +98,7 @@ class AsyncCaller:
 
 class RecorderBase:
     """
-    To be inherited by custom user-defined Recoder class. Provides core backend methods for
+    To be inherited by custom user-defined Recorder class. Provides core backend methods for
     managing runs/experiments and assists in fine control of logging training run quantities.
     Includes a number of image logging helper utilities to be called within child class.
     """
@@ -127,7 +128,10 @@ class RecorderBase:
         self.run = mlflow.active_run() if run is None else run
         self.run_id = self.run.info.run_id
         self._artifact_uri = self.run.info.artifact_uri
-        self.root = Path(self._artifact_uri[7:])  # cut file:/ uri
+        if "file:/" in self._artifact_uri:
+            self._artifact_uri = self.run.info.artifact_uri[7:]
+        self.root = Path(self._artifact_uri)  # cut file:/ uri
+        logger.info(f"starting mlflow run: {Path(self.root).parent}")
 
         self.async_log = AsyncCaller() if self.cfg.log.enable_async else None
         return self.run

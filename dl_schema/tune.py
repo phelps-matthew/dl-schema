@@ -1,29 +1,28 @@
-"""ray.tune cannot serialize dataclasses with enum fields; thus any object depending on 
-cfg must be constructed entirely within the primary run function."""
-import os
+"""
+Uses ray tune to perform hyparameter search, optimization, and run scheduling
+
+Note: ray.tune cannot serialize dataclasses with enum fields; thus any object depending on 
+    cfg must be constructed entirely within the primary run function
+"""
 import logging
-import importlib.util
+import os
 from pathlib import Path
-import pprint
-import collections
 
-import pyrallis
 import mlflow
-
+import pyrallis
+import ray
 from ray import tune
+from ray.tune import CLIReporter
 from ray.tune.integration.mlflow import mlflow_mixin
 from ray.tune.schedulers import ASHAScheduler
-
 from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune import CLIReporter
 
-from spec21.keypoint_regression.dataset import MyDataset
-from spec21.keypoint_regression.hil_dataset import HILDataset
-from spec21.keypoint_regression.models import build_model
-from spec21.keypoint_regression.cfg.train import TrainConfig
-from spec21.keypoint_regression.trainer import Trainer
-from spec21.utils import set_seed, flatten
-from spec21.keypoint_regression.recorder import Recorder
+from dl_schema.cfg import TrainConfig
+from dl_schema.dataset import MNISTDataset
+from dl_schema.models import build_model
+from dl_schema.recorder import Recorder
+from dl_schema.trainer import Trainer
+from dl_schema.utils import flatten, set_seed
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -36,6 +35,15 @@ logging.basicConfig(
 
 def _run(cfg, checkpoint_dir=None):
     """execute training, testing, or inference run based on cfg"""
+
+    # Set up logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(
+        format="[%(asctime)s] (%(levelname)s) %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+
     # instantiate recorder and set to current experiment/run
     recorder = Recorder(cfg)
     recorder.set_experiment()
@@ -44,64 +52,63 @@ def _run(cfg, checkpoint_dir=None):
     # create datasets
     logger.info("loading datasets")
     train_dataset, test_dataset = None, None
-    if cfg.data.train_root is not None and Path(cfg.data.train_root).is_dir():
-        train_dataset = MyDataset(split="train", cfg=cfg)
-    if cfg.data.test_root is not None and Path(cfg.data.test_root).is_dir():
-        if cfg.infer:
-            test_dataset = HILDataset(cfg=cfg)
-        else:
-            test_dataset = MyDataset(split="val", cfg=cfg)
-
-    # cfg as dict, encoded and ready for yaml
-    cfg_dict = pyrallis.encode(cfg)
+    if (
+        cfg.data.train_root is not None
+        and Path(cfg.data.train_root).expanduser().exists()
+    ):
+        train_dataset = MNISTDataset(split="train", cfg=cfg)
+    if (
+        cfg.data.test_root is not None
+        and Path(cfg.data.test_root).expanduser().exists()
+    ):
+        test_dataset = MNISTDataset(split="test", cfg=cfg)
 
     # build model
-    logger.info(f"initializing model: {cfg.model.cfg.model_class}")
-    model = build_model(model_class=cfg.model.cfg.model_class, cfg=cfg.model.cfg)
+    logger.info(f"initializing model: {cfg.model.model_class}")
+    model = build_model(model_class=cfg.model.model_class, cfg=cfg.model)
 
     # initialize Trainer
     logger.info("initializing trainer")
-    trainer = Trainer(model, cfg, train_dataset, test_dataset, recorder, verbose=False)
+    if train_dataset is None and test_dataset is None:
+        logger.info("no datasets found, check that MNIST data exists")
+    trainer = Trainer(model, cfg, train_dataset, test_dataset, recorder)
 
-    # log params, state dicts, and relevant training scripts to mlflow
-    script_dir = Path(__file__).parent
-    recorder.log_artifact(script_dir / "tune.py", "archive")
-    recorder.log_artifact(script_dir / "train.py", "archive")
-    recorder.log_artifact(script_dir / "trainer.py", "archive")
-    recorder.log_artifact(script_dir / "dataset.py", "archive")
-    recorder.log_artifact(script_dir / "recorder.py", "archive")
-    recorder.log_artifact(script_dir / "cfg/train.py", "archive/cfg")
-    recorder.log_dict(cfg_dict, "archive/cfg/cfg.yaml")
-    if cfg.pnp:
-        recorder.log_artifact(script_dir / "models/pnp.py", "archive")
-    if cfg.py_cfg is not None and (script_dir / Path(cfg.py_cfg)).is_file():
-        recorder.log_artifact(script_dir / Path(cfg.py_cfg), "archive/cfg")
+    # log config as params and yaml
+    cfg_dict = pyrallis.encode(cfg)  # cfg as dict, encoded for yaml
+    recorder.log_dict(cfg_dict, "archive/cfg.yaml")
     recorder.log_params(flatten(cfg_dict))
-    recorder.log_params(
-        {
-            "n_train": len(train_dataset) if train_dataset is not None else 0,
-            "n_val": len(test_dataset) if test_dataset is not None else 0,
-        }
-    )
+
+    # log relevant source files
+    script_dir = Path(__file__).parent
+    src_files = [
+        "cfg.py",
+        "dataset.py",
+        "recorder.py",
+        "recorder_base.py",
+        "train.py",
+        "trainer.py",
+        "tune.py",
+        "utils.py",
+        "models/babycnn.py",
+    ]
+    for relpath in src_files:
+        recorder.log_artifact(script_dir / relpath, "archive")
 
     # `checkpoint_dir` parameter gets passed by Ray Tune when a checkpoint should be
     # restored
     if checkpoint_dir:
-        print(f"\nLOADING CKPT DIR {checkpoint_dir}\n")
         trainer.cfg.resume = True
         trainer.load_model(Path(checkpoint_dir / "last.pt"))
 
-    # load ckpts, save initialization
+    # train
     if cfg.load_ckpt_pth:
-        trainer.load_model(cfg.load_ckpt_pth)
-    if cfg.save_init:
+        trainer.load_model()
+    if cfg.log.save_init:
         trainer.save_model("init.pt")
+    trainer.run()
 
-    # train or infer on datasets
-    if cfg.infer:
-        trainer.infer()
-    else:
-        trainer.train()
+    # stop mlflow run, exit gracefully
+    recorder.end_run()
 
 
 def run(config, checkpoint_dir=None, cfg_dict=None):
@@ -130,9 +137,9 @@ def tune_function(cfg):
     def run_fn(config, checkpoint_dir=None, cfg=cfg_dict):
         return run(config, checkpoint_dir, cfg_dict)
 
-    scheduler = ASHAScheduler(
-        metric="loss", mode="min", max_t=cfg_dict["epochs"], grace_period=4
-    )
+    # scheduler = ASHAScheduler(
+    #    metric="loss", mode="min", max_t=cfg_dict["epochs"], grace_period=4
+    # )
 
     # this reporter omits extraneous mlflow information in progress report
     # also allows tables to persist at low verbose levels
@@ -141,6 +148,9 @@ def tune_function(cfg):
         print_intermediate_tables=True,
     )
 
+    # default trial names are obscene, lets tame it down
+    def trial_dir_str(trial):
+        return "{}_{}".format(trial.trainable_name, trial.trial_id)
 
     # setup hyperparmeter search
     mlflow_config = {
@@ -153,7 +163,8 @@ def tune_function(cfg):
     config = {
         "mlflow": mlflow_config,
         "lr": tune.loguniform(1e-7, 1e-2),
-        "batch_size": tune.choice([4, 8, 16, 32]),
+        # "batch_size": tune.choice([4, 8, 16, 32]),
+        "batch_size": tune.choice([2, 3, 4, 5]),
         "weight_decay": tune.loguniform(1e-6, 1e-1),
     }
 
@@ -163,12 +174,15 @@ def tune_function(cfg):
         name="tuneup",
         num_samples=2,
         config=config,
-        resources_per_trial={"cpu": 4, "gpu": 0.2},
+        resources_per_trial={"cpu": 2, "gpu": 1},
         # scheduler=scheduler,
         search_alg=hyperopt_search,
         keep_checkpoints_num=2,
         progress_reporter=reporter,
         verbose=1,
+        local_dir="./ray_results",
+        log_to_file=("stdout.log", "stderr.log"),
+        trial_dirname_creator=trial_dir_str,
     )
 
 
@@ -179,30 +193,29 @@ def setup_experiment(cfg):
     Returns:
         cfg
     """
-    # check for external py cfg
-    if cfg.py_cfg is not None and Path(cfg.py_cfg).is_file():
-        logger.info(f"loading py cfg: {Path(cfg.py_cfg).resolve()}")
-        cfg_pth = Path(cfg.py_cfg).resolve()
-        # import the CFG object from path
-        spec = importlib.util.spec_from_file_location("foo", str(cfg_pth))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        cfg_new = mod.CFG
-        # inherit the following CLI args
-        cfg_new.py_cfg = cfg.py_cfg
-        # gpu is to always be specified in CLI
-        cfg_new.gpus = cfg.gpus
-        cfg = cfg_new
-
     # make deterministic
     set_seed(cfg.seed)
 
-    # log the config
-    cfg_dict = pyrallis.encode(cfg)  # cfg as dict, encoded for yaml
-    if cfg.verbose:
-        logger.info("\n" + pprint.pformat(cfg_dict))
+    # disable internal log and print statements convoluting ray cli logs
+    ray.init(log_to_driver=True)
 
-    # set GPU
+    # force async to false as this breaks ray tune; force tune
+    cfg.log.enable_async = False
+    cfg.tune = True
+
+    # make dataset paths absolute
+    if (
+        cfg.data.train_root is not None
+        and Path(cfg.data.train_root).expanduser().exists()
+    ):
+        cfg.data.train_root = Path(cfg.data.train_root).expanduser().absolute()
+    if (
+        cfg.data.test_root is not None
+        and Path(cfg.data.test_root).expanduser().exists()
+    ):
+        cfg.data.test_root = Path(cfg.data.test_root).expanduser().absolute()
+
+    # set available GPUs
     gpus = ",".join([str(i) for i in cfg.gpus])
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
     logger.info(f"setting gpus: {gpus}")
@@ -221,7 +234,7 @@ def main():
     # parse config from CLI
     cfg = pyrallis.parse(config_class=TrainConfig)
 
-    # iniherit py_cfg args, set GPUs, and create mlflow experiment
+    # set GPUs and create mlflow experiment
     cfg = setup_experiment(cfg)
 
     # run ray tune
