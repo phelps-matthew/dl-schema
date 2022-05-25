@@ -1,4 +1,7 @@
-"""Sample training loop."""
+"""
+Training executer - handles lr schedulers, optimizers, model saving/loading, 
+datasets/generators, train steps, test steps, metrics, losses, etc
+"""
 import logging
 import math
 from pathlib import Path
@@ -19,20 +22,23 @@ logger = logging.getLogger(__name__)
 class Trainer:
     """train or evaluate a dataset over n epochs"""
 
-    def __init__(self, model, cfg, train_dataset, test_dataset=None, verbose=True):
+    def __init__(self, model, cfg, train_dataset, test_dataset=None, recorder=None, verbose=True):
         self.cfg = cfg
         self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
+        self.recorder = recorder
         self.test_only = self.train_dataset is None
         self.verbose = verbose
         self.curr_epoch = 0
         self.scheduler = None
 
         # set mlflow paths for model/optim saving
-        mlflow_artifact_path = mlflow.active_run().info.artifact_uri[7:]
-        self.ckpt_root = Path(mlflow_artifact_path) / "checkpoints"
-        (self.ckpt_root).mkdir(parents=True, exist_ok=True)
+        if recorder is not None:
+            self.ckpt_root = self.recorder.root / "checkpoints"
+            (self.ckpt_root).mkdir(parents=True, exist_ok=True)
+        else:
+            self.ckpt_root = ""
 
         # set gpu device if available
         self.device = "cpu"
@@ -172,15 +178,18 @@ class Trainer:
             if step % self.cfg.log.batch_freq == 0:
                 suffix = f"_{split}_batch"
                 if is_train:
-                    mlflow.log_metric("lr" + suffix, curr_lr, step)
-                mlflow.log_metric("loss" + suffix, loss.item(), step)
-                mlflow.log_metric(self.cfg.metric1.name + suffix, metric1.item(), step)
-                # log grid of batch images
-                n_rows = math.ceil(math.sqrt(self.cfg.bs))  # actually n_cols
-                grid = torchvision.utils.make_grid(
-                    x.cpu(), normalize=True, nrow=n_rows
-                ).permute(1, 2, 0)
-                mlflow.log_image(grid.numpy(), f"digits{suffix}.png")
+                    self.recorder.log_metric("lr" + suffix, curr_lr, step)
+                self.recorder.log_metric("loss" + suffix, loss.item(), step)
+                self.recorder.log_metric(self.cfg.metric1.name + suffix, metric1.item(), step)
+                if self.cfg.log.images:
+                    self.recorder.log_image_grid(x.detach().cpu(), name=f"digits{suffix}")
+
+                    # log grid of batch images
+                    #n_rows = math.ceil(math.sqrt(self.cfg.bs))  # actually n_cols
+                    #grid = torchvision.utils.make_grid(
+                    #    x.cpu(), normalize=True, nrow=n_rows
+                    #).permute(1, 2, 0)
+                    #mlflow.log_image(grid.numpy(), f"digits{suffix}.png")
 
             # stop training early based on steps
             if self.cfg.steps is not None and step >= self.cfg.steps:

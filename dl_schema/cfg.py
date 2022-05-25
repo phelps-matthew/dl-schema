@@ -83,11 +83,15 @@ class LogConfig:
     """config for logging specification"""
 
     # mlflow tracking uri
-    uri: Optional[str] = "~/dev/spec21/spec21/keypoint_regression/mlruns"
-    # toggle asynchronous logging (not implemented in dl_schema)
+    uri: Optional[str] = "~/dev/dl-schema/dl_schema/mlruns"
+    # toggle asynchronous logging
     enable_async: bool = True
+    # number of threads to use in async logging (2 threads/core typically)
+    num_threads: int = 4
     # frequency to log batch quantities
     batch_freq: int = 1
+    # log images
+    images: bool = True
 
 
 @dataclass()
@@ -111,7 +115,7 @@ class TrainConfig:
     # number of cpu workers in dataloader
     num_workers: int = 4
     # maximum epoch number
-    epochs: int = 2
+    epochs: int = 1
     # batch size
     bs: int = 64
     # learning rate (if onecycle, max_lr)
