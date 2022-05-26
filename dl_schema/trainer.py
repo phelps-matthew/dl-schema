@@ -31,6 +31,7 @@ class Trainer:
         self.verbose = verbose
         self.curr_step = 0
         self.scheduler = None
+        self.total_steps = self.cfg.train_steps
         self.tune = self.cfg.tune
         self.tune_linked = False
 
@@ -46,7 +47,8 @@ class Trainer:
         self.device = "cpu"
         if torch.cuda.is_available():
             self.device = torch.cuda.current_device()
-            self.model = self.model.to(self.device)
+            #self.model = self.model.to(self.device)
+            self.model = torch.nn.DataParallel(self.model) 
 
         # set dataloaders
         self.train_loader = self.create_dataloader(train=True)
@@ -84,7 +86,7 @@ class Trainer:
             self.scheduler = self.cfg.lr_method(
                 self.optimizer,
                 self.cfg.lr,
-                total_steps=self.cfg.train_steps + 1,
+                total_steps=self.total_steps + 1,
                 div_factor=self.cfg.onecycle_div_factor,
                 final_div_factor=self.cfg.onecycle_final_div_factor,
             )
@@ -120,11 +122,12 @@ class Trainer:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         self.best_loss = ckpt["loss"]
 
-        # only update scheduler and step counter if resuming
+        # if resuming, current and total steps must be set to match scheduler
         if self.cfg.resume:
             logger.info(f"resuming from step: {ckpt['step']}")
             self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
             self.curr_step = ckpt["step"] + 1
+            self.total_steps = ckpt["scheduler_state_dict"]["total_steps"] - 1
 
         # load parameters
         logger.info(f"loading model params from {ckpt_path}")
@@ -209,7 +212,7 @@ class Trainer:
         # initialize running lists of quantities to be logged
         losses, metric1s = [], []
 
-        for step in range(self.cfg.train_steps + 1):
+        for step in range(self.curr_step, self.total_steps + 1):
             # allow repeated iteration over entire dataset
             try:
                 x, y = next(data_iter)
@@ -234,12 +237,12 @@ class Trainer:
             metric1s.append(metric1.item())
 
             # log train quantities (losses, metrics, batch of images)
-            if step % self.cfg.log.train_freq == 0 or step == self.cfg.train_steps:
+            if step % self.cfg.log.train_freq == 0 or step == self.total_steps:
                 mean_train_loss = float(np.mean(losses))
                 mean_metric1 = float(np.mean(metric1s))
                 losses = []
                 train_progress = (
-                    f"TRAIN STEP {step}/{self.cfg.train_steps}: "
+                    f"TRAIN STEP {step}/{self.total_steps}: "
                     + f"loss {mean_train_loss:.6e} lr {lr:.2e}"
                 )
                 logger.info(train_progress) if self.tune else print(train_progress)
@@ -253,5 +256,5 @@ class Trainer:
                     self.recorder.log_image_grid(x.detach().cpu(), name=f"digits_train")
 
             # evaluate test set
-            if step % self.cfg.log.test_freq == 0 or step == self.cfg.train_steps:
+            if step % self.cfg.log.test_freq == 0 or step == self.total_steps:
                 self.evaluate()

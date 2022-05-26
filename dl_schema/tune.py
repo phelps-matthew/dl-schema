@@ -149,9 +149,9 @@ def tune_function(cfg):
     )
 
     # enable asynchronous successive halving algorithm scheduler
-    # scheduler = ASHAScheduler(
-    #    metric="loss", mode="min", max_t=cfg_dict["epochs"], grace_period=4
-    # )
+    #scheduler = ASHAScheduler(
+    #   metric="loss", mode="min", max_t=cfg_dict["epochs"], grace_period=4
+    #)
 
     # define hyperparmeter search algorithm
     hyperopt_search = HyperOptSearch(metric="loss", mode="min")
@@ -173,7 +173,7 @@ def tune_function(cfg):
         num_samples=2,
         config=config,
         resources_per_trial={"cpu": 2, "gpu": 1},
-        # scheduler=scheduler,
+        #scheduler=scheduler,
         search_alg=hyperopt_search,
         keep_checkpoints_num=2,
         progress_reporter=reporter,

@@ -125,7 +125,7 @@ class TrainConfig:
     # number of cpu workers in dataloader
     num_workers: int = 4
     # number of training steps (weight updates)
-    train_steps: int = int(1e5)
+    train_steps: int = 2000
     # batch size
     bs: int = 64
     # learning rate (if onecycle, max_lr)
@@ -150,7 +150,7 @@ class TrainConfig:
     loss: Criterion = Criterion.crossentropy
     # metric function 1: (l1, l2, mse, zero)
     metric1: Criterion = Criterion.accuracy
-    # enable ray tune
+    # enable ray hyperparam tuning
     tune: bool = False
 
 
