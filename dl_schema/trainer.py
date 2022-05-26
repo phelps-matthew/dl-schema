@@ -42,13 +42,11 @@ class Trainer:
         else:
             self.ckpt_root = Path("./")
 
-        # set gpu device if available
-        # TODO: multigpu dataparallel
+        # set gpu device(s) if available
         self.device = "cpu"
         if torch.cuda.is_available():
             self.device = torch.cuda.current_device()
-            #self.model = self.model.to(self.device)
-            self.model = torch.nn.DataParallel(self.model) 
+            self.model = torch.nn.DataParallel(self.model).to(self.device)
 
         # set dataloaders
         self.train_loader = self.create_dataloader(train=True)

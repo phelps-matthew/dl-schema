@@ -1,21 +1,27 @@
 betas:
 - 0.9
 - 0.95
-bs: 2
+bs: 64
 data:
   shuffle: true
   test_root: ./data/processed/test
   train_root: ./data/processed/train
-epochs: 2
 exp_name: debug
 gpus:
 - -1
 load_ckpt_pth: null
 load_optimizer: false
 log:
-  batch_freq: 1
   enable_async: true
-  uri: ~/dev/spec21/spec21/keypoint_regression/mlruns
+  images: true
+  num_threads: 4
+  save_best: false
+  save_freq: 1000
+  save_init: false
+  save_last: false
+  test_freq: 500
+  train_freq: 100
+  uri: ~/dev/dl-schema/dl_schema/mlruns
 loss: crossentropy
 lr: 0.0003
 lr_method: onecycle
@@ -32,10 +38,7 @@ onecycle_div_factor: 25
 onecycle_final_div_factor: 10000.0
 resume: false
 run_name: run_0
-save_best: false
-save_init: false
-save_last: false
 seed: 42
-steps: null
+train_steps: 2000
 tune: false
 weight_decay: 0.0

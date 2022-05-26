@@ -162,7 +162,7 @@ def tune_function(cfg):
             "experiment_name": cfg_dict["exp_name"],
         },
         "lr": tune.loguniform(1e-7, 1e-2),
-        "batch_size": tune.choice([4, 8, 16, 32]),
+        "batch_size": tune.choice([40, 80, 160, 320]),
         "weight_decay": tune.loguniform(1e-6, 1e-1),
     }
 
@@ -170,7 +170,7 @@ def tune_function(cfg):
     tune.run(
         run_fn,
         name="tuneup",
-        num_samples=2,
+        num_samples=4,
         config=config,
         resources_per_trial={"cpu": 2, "gpu": 1},
         #scheduler=scheduler,
@@ -214,9 +214,9 @@ def setup_experiment(cfg):
         cfg.data.test_root = Path(cfg.data.test_root).expanduser().absolute()
 
     # set available GPUs
-    gpus = ",".join([str(i) for i in cfg.gpus])
-    os.environ["CUDA_VISIBLE_DEVICES"] = gpus
-    logger.info(f"setting gpus: {gpus}")
+    #gpus = ",".join([str(i) for i in cfg.gpus])
+    #os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+    #logger.info(f"setting gpus: {gpus}")
 
     # create experiment if it does not exist
     if cfg.exp_name is not None:
