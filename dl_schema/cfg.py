@@ -7,10 +7,11 @@ from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
 from pathlib import Path
 import pyrallis
 from enum import Enum
-from dl_schema.utils import l2, zero, accuracy
+from dl_schema.utils import l2, zero, accuracy, cosine_schedule_with_warmup, linear_schedule_with_warmup
 
-## Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the conveinent ability to
-## be able to use callable functions and classes as dataclass fields, e.g. `TrainConfig().loss.mse(y_pred, y)`
+## Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the
+## conveinent ability to ## be able to use callable functions and classes as dataclass
+## fields, e.g. `TrainConfig().loss.mse(y_pred, y)`
 class Wrap:
     """wrapper for serializing/deserializing classes"""
 
@@ -29,6 +30,8 @@ class LRMethod(Enum):
 
     onecycle: Wrap = Wrap(OneCycleLR)
     constant: Wrap = Wrap(LambdaLR)
+    linear_warmup_cosine_decay: Wrap = Wrap(cosine_schedule_with_warmup)
+    linear_warmup_linear_decay: Wrap = Wrap(linear_schedule_with_warmup)
 
     def __call__(self, *args, **kwargs):
         return self.value(*args, **kwargs)
@@ -119,7 +122,7 @@ class TrainConfig:
     # experiment name
     exp_name: str = "debug"
     # gpu list to expose to training instance
-    gpus: List[int] = field(default_factory=lambda: [-1])
+    gpus: List[int] = field(default_factory=lambda: [0])
     # random seed, set to make deterministic
     seed: int = 42
     # number of cpu workers in dataloader
@@ -130,12 +133,14 @@ class TrainConfig:
     bs: int = 64
     # learning rate (if onecycle, max_lr)
     lr: float = 3e-4
-    # lr schedule type: (constant, onecycle)
-    lr_method: LRMethod = LRMethod.onecycle
+    # lr schedule type: (constant, onecycle, linear_warmup_cosine_decay)
+    lr_method: LRMethod = LRMethod.linear_warmup_cosine_decay
     # initial lr = lr / div
     onecycle_div_factor: float = 25
     # final lr = lr / final_div
     onecycle_final_div_factor: float = 1e4
+    # number of linear warmup steps in linear warmup cosine decay scheduler
+    warmup_steps: int = 500
     # weight decay as used in AdamW
     weight_decay: float = 0.0  # only applied on matmul weights
     # adamw momentum parameters
