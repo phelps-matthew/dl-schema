@@ -88,6 +88,15 @@ class Trainer:
                 div_factor=self.cfg.onecycle_div_factor,
                 final_div_factor=self.cfg.onecycle_final_div_factor,
             )
+        elif self.cfg.lr_method.name in [
+            "linear_warmup_cosine_decay",
+            "linear_warmup_linear_decay",
+        ]:
+            self.scheduler = self.cfg.lr_method(
+                self.optimizer,
+                num_warmup_steps=self.cfg.warmup_steps,
+                num_training_steps=self.total_steps + 1,
+            )
         else:
             self.scheduler = self.cfg.lr_method(
                 self.optimizer, lr_lambda=lambda step: 1
