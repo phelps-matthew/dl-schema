@@ -89,7 +89,6 @@ class LogConfig:
     # frequency to log batch quantities
     batch_freq: int = 1
 
-
 @dataclass()
 class TrainConfig:
     """config for training instance"""
@@ -105,7 +104,7 @@ class TrainConfig:
     # experiment name
     exp_name: str = "debug"
     # gpu list to expose to training instance
-    gpus: List[int] = field(default_factory=lambda: [-1])
+    gpus: List[int] = field(default_factory=lambda: [0])
     # random seed, set to make deterministic
     seed: int = 42
     # number of cpu workers in dataloader
