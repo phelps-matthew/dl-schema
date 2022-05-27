@@ -1,6 +1,8 @@
 # &#127796; dl-schema
 A deep learning training template constructed as a minimal working MNIST example. Utilizes dataclasses as flexible train configs and mlflow for analytics and artifact logging.
 
+Video Introduction: [https://youtu.be/_5by2Nix49c](https://youtu.be/_5by2Nix49c)
+
 ## Install
 ```
 # create `schema` conda environment
