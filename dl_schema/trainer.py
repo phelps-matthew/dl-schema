@@ -247,7 +247,7 @@ class Trainer:
             if step % self.cfg.log.train_freq == 0 or step == self.total_steps:
                 mean_train_loss = float(np.mean(losses))
                 mean_metric1 = float(np.mean(metric1s))
-                losses = []
+                losses, metric1s = [], []
                 train_progress = (
                     f"TRAIN STEP {step}/{self.total_steps}: "
                     + f"loss {mean_train_loss:.6e} lr {lr:.2e}"
