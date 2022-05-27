@@ -1,4 +1,5 @@
 # ml stack
+**/ray_results
 **/mlruns
 **/runs
 **/tmp
