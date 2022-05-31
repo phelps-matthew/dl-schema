@@ -55,6 +55,9 @@ def main():
         logger.info(f"initializing model: {cfg.model.model_class}")
         model = build_model(model_class=cfg.model.model_class, cfg=cfg.model)
 
+        # add parameter and gradient logging (if specified in cfg)
+        recorder.add_weights_and_grads_hooks(model)
+
         # initialize Trainer
         logger.info("initializing trainer")
         if train_dataset is None and test_dataset is None:

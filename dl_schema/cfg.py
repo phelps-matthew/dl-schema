@@ -103,6 +103,10 @@ class LogConfig:
     save_last: bool = False
     # save best model state (early stopping)
     save_best: bool = False
+    # log histograms of trainable parameters
+    parameters: bool = True
+    # log histograms of gradients
+    gradients: bool = True
     # log images
     images: bool = True
 
@@ -128,7 +132,7 @@ class TrainConfig:
     # number of cpu workers in dataloader
     num_workers: int = 4
     # number of training steps (weight updates)
-    train_steps: int = 2000
+    train_steps: int = 1000
     # batch size
     bs: int = 64
     # learning rate (if onecycle, max_lr)

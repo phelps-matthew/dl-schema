@@ -17,9 +17,14 @@ from matplotlib import pyplot as plt
 import mlflow
 import numpy as np
 import torch
+import torch.nn as nn
+from torch import Tensor
 import torchvision
 
 logger = logging.getLogger(__name__)
+
+# TODO Handle the case of duplicate names.
+# TODO Total steps within hooks
 
 
 class AsyncCaller:
@@ -114,6 +119,13 @@ class RecorderBase:
         self.exp_id = None
         self.run = None
         self.run_id = None
+        self._artifact_uri = None
+        self.root = None
+        self.async_log = None
+
+        # hooks
+        self.hook_handles = {}
+        self.hook_counter = -1
 
     def set_experiment(self, exp_name=None):
         """set exp_id as attribute, assumes experiment already exists"""
@@ -261,3 +273,151 @@ class RecorderBase:
         img.clamp_(min=low, max=high)
         img.sub_(low).div_(max(high - low, 1e-5))
         return img
+
+    def add_weights_and_grads_hooks(
+        self,
+        module: nn.Module,
+        name=None,
+        prefix="",
+    ):
+        """Add forward posthooks to log trainable parameters and backward posthooks to
+        log gradients. We will have one paramater hook and multiple gradient hooks."""
+        if name is not None:
+            prefix = prefix + name
+
+        if self.cfg.log.parameters:
+
+            # this callable will be called after every forward pass
+            def parameter_log_hook(module, input_, output):
+                self.hook_counter += 1
+                if not module.training:
+                    return
+                if self.hook_counter % self.cfg.log.train_freq != 0:
+                    return
+                # iterate through layers to find trainable params to process
+                for name, parameter in module.named_parameters():
+                    self._process_hooked_tensor(
+                        tensor=parameter.cpu(), name="parameters/" + prefix + name
+                    )
+
+            # register the forward posthook callable
+            hook = module.register_forward_hook(parameter_log_hook)
+            # add parameter hook handle to dict
+            self.hook_handles["parameters/" + prefix] = hook
+
+        if self.cfg.log.gradients:
+            # only register hooks that require gradients
+            for name, parameter in module.named_parameters():
+                if parameter.requires_grad:
+                    self._hook_variable_gradient_stats(
+                        parameter,
+                        "gradients/" + prefix + name,
+                    )
+
+    def _hook_variable_gradient_stats(self, var, name):
+        """Register backward posthook on gradient variables"""
+        if not isinstance(var, torch.autograd.Variable):
+            cls = type(var)
+            raise TypeError(
+                "Expected torch.Variable, not {}.{}".format(
+                    cls.__module__, cls.__name__
+                )
+            )
+        handle = self.hook_handles.get(name, None)
+        if handle is not None and self._torch_hook_handle_is_valid(handle):
+            raise ValueError(f'A hook has already been set under name "{name}"')
+
+        # this callable will be called when the associated tensor's gradients
+        # are to be evaluated
+        def _callback(grad):
+            if self.hook_counter % self.cfg.log.train_freq != 0:
+                return
+            self._process_hooked_tensor(grad.data, name)
+
+        # register the backward posthook callable
+        handle = var.register_hook(lambda grad: _callback(grad))
+        # add parameter hook handle to dict
+        self.hook_handles[name] = handle
+        return handle
+
+    def _process_hooked_tensor(self, tensor, name):
+        """Standardize tensor format, flatten, and send to processing function."""
+
+        # unpack and flatten possible nested tensor tuple
+        if isinstance(tensor, tuple) or isinstance(tensor, list):
+            while (isinstance(tensor, tuple) or isinstance(tensor, list)) and (
+                isinstance(tensor[0], tuple) or isinstance(tensor[0], list)
+            ):
+                tensor = [item for sublist in tensor for item in sublist]
+            tensor = torch.cat([t.reshape(-1) for t in tensor])
+
+        # ensure tensor has shape attribute, flag sparse tensors (not currently handled)
+        # half precision tensors on cpu do not support view(), upconvert to 32bit
+        if not hasattr(tensor, "shape"):
+            cls = type(tensor)
+            raise TypeError(f"Expected Tensor, not {cls.__module__}.{cls.__name__}")
+        if isinstance(tensor, torch.HalfTensor):
+            tensor = tensor.clone().type(torch.float).detach()
+        if tensor.is_sparse:
+            cls = type(tensor)
+            raise TypeError(
+                f"Encountered sparse tensor {cls.__module__} {cls.__name__}"
+            )
+
+        # flatten tensor and move to cpu
+        flat = tensor.reshape(-1)
+        flat = flat.cpu().clone().detach()
+
+        # skip logging if all values are nan or inf or the tensor is empty
+        if self._no_finite_values(flat):
+            return
+
+        # remove nans and infs if present
+        flat = self._remove_infs_nans(flat)
+
+        # process tensor, recording histogram
+        print(name, flat[0], flat[-1])
+
+    def _torch_hook_handle_is_valid(self, handle):
+        """flag hooks that share same name"""
+        d = handle.hooks_dict_ref()
+        if d is None:
+            return False
+        else:
+            return handle.id in d
+
+    def _no_finite_values(self, tensor: "torch.Tensor") -> bool:
+        """determine if all values are nan or inf"""
+        q1 = tensor.shape == torch.Size([0])
+        q2 = bool((~torch.isfinite(tensor)).all().item())
+        return q1 or q2
+
+    def _remove_infs_nans(self, tensor: "torch.Tensor") -> "torch.Tensor":
+        """remove nans and infs if present"""
+        if not torch.isfinite(tensor).all():
+            tensor = tensor[torch.isfinite(tensor)]
+        return tensor
+
+
+if __name__ == "__main__":
+    """Test the model"""
+    from torch.utils.data import DataLoader
+    from dl_schema.dataset import MNISTDataset
+    from dl_schema.cfg import TrainConfig
+    from dl_schema.models import BabyCNN
+    from dl_schema.recorder import Recorder
+
+    cfg = TrainConfig()
+    recorder = Recorder(cfg)
+    train_data = MNISTDataset(split="train", cfg=cfg)
+    train_dataloader = DataLoader(train_data, batch_size=10, shuffle=True)
+    x, y = next(iter(train_dataloader))
+
+    model = BabyCNN(cfg.model)
+    recorder.add_weights_and_grads_hooks(model)
+    y_pred = model(x)
+    loss = y_pred.log().mean()
+    loss.backward()
+    y_pred = model(x)
+    loss = y_pred.log().mean()
+    loss.backward()
