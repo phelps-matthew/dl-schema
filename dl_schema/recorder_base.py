@@ -288,7 +288,7 @@ class RecorderBase:
         if self.cfg.log.parameters:
 
             # this callable will be called after every forward pass
-            def parameter_log_hook(module, input_, output):
+            def parameter_hook(module, input_, output):
                 self.hook_counter += 1
                 if not module.training:
                     return
@@ -301,7 +301,7 @@ class RecorderBase:
                     )
 
             # register the forward posthook callable
-            hook = module.register_forward_hook(parameter_log_hook)
+            hook = module.register_forward_hook(parameter_hook)
             # add parameter hook handle to dict
             self.hook_handles["parameters/" + prefix] = hook
 
@@ -329,13 +329,13 @@ class RecorderBase:
 
         # this callable will be called when the associated tensor's gradients
         # are to be evaluated
-        def _callback(grad):
+        def grad_hook(grad):
             if self.hook_counter % self.cfg.log.train_freq != 0:
                 return
             self._process_hooked_tensor(grad.data, name)
 
         # register the backward posthook callable
-        handle = var.register_hook(lambda grad: _callback(grad))
+        handle = var.register_hook(grad_hook)
         # add parameter hook handle to dict
         self.hook_handles[name] = handle
         return handle
