@@ -5,7 +5,6 @@ Note: ray.tune cannot serialize dataclasses with enum fields; thus any object de
     cfg must be constructed entirely within the primary run function
 """
 import logging
-import os
 from pathlib import Path
 
 import mlflow
@@ -22,21 +21,13 @@ from dl_schema.dataset import MNISTDataset
 from dl_schema.models import build_model
 from dl_schema.recorder import Recorder
 from dl_schema.trainer import Trainer
-from dl_schema.utils import flatten, set_seed
-
-# Set up logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    format="[%(asctime)s] (%(levelname)s) %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    level=logging.INFO,
-)
+from dl_schema.utils.utils import flatten, set_seed
 
 
 def _run(cfg, checkpoint_dir=None):
     """execute training, testing, or inference run based on cfg"""
 
-    # Set up logging
+    # Set up logging (within an individual run)
     logger = logging.getLogger(__name__)
     logging.basicConfig(
         format="[%(asctime)s] (%(levelname)s) %(message)s",
@@ -84,12 +75,12 @@ def _run(cfg, checkpoint_dir=None):
         "cfg.py",
         "dataset.py",
         "recorder.py",
-        "recorder_base.py",
         "train.py",
         "trainer.py",
         "tune.py",
-        "utils.py",
         "models/babycnn.py",
+        "utils/utils.py",
+        "utils/recorder_base.py",
     ]
     for relpath in src_files:
         recorder.log_artifact(script_dir / relpath, "archive")
@@ -134,7 +125,7 @@ def tune_function(cfg):
     # rather than wrapping a partial, simply wrap defined run_fn here
     # this sets tracking uri according to config
     @mlflow_mixin
-    def run_fn(config, checkpoint_dir=None, cfg=cfg_dict):
+    def run_fn(config, checkpoint_dir=None):
         return run(config, checkpoint_dir, cfg_dict)
 
     # default trial names are obscene, lets tame it down
@@ -170,7 +161,7 @@ def tune_function(cfg):
     tune.run(
         run_fn,
         name="tuneup",
-        num_samples=4,
+        num_samples=3,
         config=config,
         resources_per_trial={"cpu": 2, "gpu": 1},
         #scheduler=scheduler,
@@ -185,12 +176,7 @@ def tune_function(cfg):
 
 
 def setup_experiment(cfg):
-    """iniherit py_cfg args, set GPUs, and create mlflow experiment
-    Args:
-        cfg: pyrallis cfg parsed from CLI
-    Returns:
-        cfg
-    """
+    """setup ray tune, cfg, and mlflow for hyperparam experiment"""
     # make deterministic
     set_seed(cfg.seed)
 
@@ -213,26 +199,20 @@ def setup_experiment(cfg):
     ):
         cfg.data.test_root = Path(cfg.data.test_root).expanduser().absolute()
 
-    # set available GPUs
-    #gpus = ",".join([str(i) for i in cfg.gpus])
-    #os.environ["CUDA_VISIBLE_DEVICES"] = gpus
-    #logger.info(f"setting gpus: {gpus}")
-
     # create experiment if it does not exist
     if cfg.exp_name is not None:
         if mlflow.get_experiment_by_name(cfg.exp_name) is None:
-            logger.info(f"creating mlflow experiment: {cfg.exp_name}")
+            print(f"creating mlflow experiment: {cfg.exp_name}")
             mlflow.create_experiment(cfg.exp_name)
 
     return cfg
 
 
 def main():
-    """outermost execution"""
     # parse config from CLI
     cfg = pyrallis.parse(config_class=TrainConfig)
 
-    # set GPUs and create mlflow experiment
+    # prepare cfg for mlflow hyperparam experiment
     cfg = setup_experiment(cfg)
 
     # run ray tune
