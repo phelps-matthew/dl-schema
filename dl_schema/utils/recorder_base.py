@@ -342,7 +342,7 @@ class RecorderBase:
         if name is not None:
             prefix = prefix + name
 
-        if self.cfg.log.parameters:
+        if self.cfg.log.params:
 
             # this callable will be called after every forward pass
             def parameter_hook(module, input_, output):
