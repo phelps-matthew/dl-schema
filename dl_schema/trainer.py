@@ -11,7 +11,7 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 
-from dl_schema.utils import configure_adamw
+from dl_schema.utils.utils import configure_adamw
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ class Trainer:
         # backward step
         self.model.zero_grad()
         loss.backward()
-        #self.optimizer.step()
+        self.optimizer.step()
         self.scheduler.step()
         return y_pred, loss, lr
 

@@ -15,23 +15,23 @@ from threading import Thread
 from typing import Callable, List, Tuple, Union
 
 import PIL
-import joypy
 import matplotlib
-
-# use Agg backend for image rendering to file
-matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 import mlflow
 import numpy as np
-from scipy.stats import gaussian_kde
 import torch
-from torch import Tensor
 import torch.nn as nn
 import torchvision
 
+from dl_schema.utils.ridgeplot import ridgeplot
+
+# use Agg backend for image rendering to file
+matplotlib.use("Agg")
+
+
 logger = logging.getLogger(__name__)
 
-# TODO Handle the case of duplicate names.
+# TODO: Optimize histogram data types
 
 
 class AsyncCaller:
@@ -134,10 +134,11 @@ class RecorderBase:
         self.hook_handles = {}
         self.curr_step = 0
 
-        # kernel density estimators of params and grads
-        self._kde_samples = 5000
-        self.kdes = defaultdict(list)
-        self.raws = defaultdict(list)
+        # used to compute histograms of params and grads
+        self._is_cuda_histc_supported = None
+        self._num_bins = 64
+        self._extra_bin_frac = 0.2
+        self.histograms = defaultdict(list)
 
     def set_experiment(self, exp_name=None):
         """set exp_id as attribute, assumes experiment already exists"""
@@ -266,10 +267,11 @@ class RecorderBase:
             ).permute(1, 2, 0)
             self.client.log_image(self.run_id, grid_x.numpy(), f"{name}.{img_fmt}")
 
-    def figure_to_array(self, figure: plt.Figure) -> np.ndarray:
+    def figure_to_array(self, figure: plt.Figure, png: bool = True) -> np.ndarray:
         """convert matplotlib figure to numpy array"""
+        fmt = "png" if png else "jpg"
         buffer = io.BytesIO()
-        plt.savefig(buffer, format="png", dpi=100)
+        plt.savefig(buffer, format=fmt, dpi=100)
         plt.close(figure)
         buffer.seek(0)
         img = PIL.Image.open(buffer)
@@ -290,45 +292,44 @@ class RecorderBase:
         img.sub_(low).div_(max(high - low, 1e-5))
         return img
 
-    # @AsyncCaller.async_dec(ac_attr="async_log")
     def log_weights_and_grad_histograms(self):
         """create histogram plots over all stored kdes"""
-        for k, v in self.kdes.items():
-            self._generate_histogram(kde_item=v, name=k)
+        for k, v in self.histograms.items():
+            self._generate_histogram(v, name=k)
 
-    def _generate_histogram(self, kde_item: List[Tuple[gaussian_kde, str]], name):
+    @AsyncCaller.async_dec(ac_attr="async_log")
+    def _generate_histogram(self, data: List, name):
         """generate histogram of single parameter or gradient"""
-        # resample from kde to form data input for histogram ridgeplot
-        data = {}
-        kde0 = kde_item[0][0]
-        for kde, step in kde_item:
-            data[step] = kde0.resample(self._kde_samples)[0]
-            #data[step] = kde0
-        # draw histogram
-        fig, axes = joypy.joyplot(
-            data,
-            overlap=2,
-            # colormap=cm.OrRd_r,
+        counts, bins, steps = zip(*data)
+        # find global min/max range
+        bin_min, bin_max = (float("inf"), float("-inf"))
+        for bin_ in bins:
+            curr_bin_min = bin_[0][0]
+            curr_bin_max = bin_[0][-1]
+            if curr_bin_min < bin_min:
+                bin_min = curr_bin_min
+            if curr_bin_max > bin_max:
+                bin_max = curr_bin_max
+        x_range = [bin_min, bin_max]
+        # create ridgeline plot
+        labels = [s[0] for s in steps]
+        fig, axes = ridgeplot(
+            counts,
+            bins,
+            x_range,
+            figsize=(7, 5),
             linecolor="w",
             linewidth=0.5,
-            range_style="all",
-            kind="counts",
+            overlap=1,
+            labels=labels,
+            fade=True,
+            title=name,
         )
-        axes[-1].set_title(name, loc="right")
         # render figure to numpy array
         img = self.figure_to_array(fig)
         img_path = name + ".png"
-        # log as artifact (do not open new thread)
+        ## log as artifact (do not open new thread)
         self.client.log_image(self.run_id, img, img_path)
-
-    # @AsyncCaller.async_dec(ac_attr="async_log")
-    def save_kde(self, tensor, name):
-        """compute kernel density estimator for hooked param or gradient, store in dict"""
-        print(name, tensor[0], tensor[-1])
-        kde = gaussian_kde(tensor, bw_method="scott")
-        self.kdes[name].append((kde, self.curr_step))
-        #self.kdes[name].append((tensor, self.curr_step))
-        return (tensor, self.curr_step)
 
     def add_weights_and_grads_hooks(
         self,
@@ -419,9 +420,26 @@ class RecorderBase:
                 f"Encountered sparse tensor {cls.__module__} {cls.__name__}"
             )
 
-        # flatten tensor and move to cpu
+        # flatten tensor
         flat = tensor.reshape(-1)
-        flat = flat.cpu().clone().detach()
+
+        # if gpu available, compute using cuda_histc
+        if flat.is_cuda:
+            if self._is_cuda_histc_supported is None:
+                self._is_cuda_histc_supported = True
+                check = torch.cuda.FloatTensor(1).fill_(0)
+                try:
+                    check = flat.histc(bins=self._num_bins)
+                except RuntimeError as e:
+                    self._is_cuda_histc_supported = False
+
+            if not self._is_cuda_histc_supported:
+                flat = flat.cpu().clone().detach()
+
+            # As of torch 1.0.1.post2+nightly, float16 cuda summary ops are not supported
+            # (convert to float32)
+            if isinstance(flat, torch.cuda.HalfTensor):
+                flat = flat.clone().type(torch.cuda.FloatTensor).detach()
 
         # skip logging if all values are nan or inf or the tensor is empty
         if self._no_finite_values(flat):
@@ -430,8 +448,24 @@ class RecorderBase:
         # remove nans and infs if present
         flat = self._remove_infs_nans(flat)
 
-        # process tensor, store kde
-        self.save_kde(flat.numpy(), name)
+        # compute bin range, adding some extra bin padding
+        tmin = flat.min().item()
+        tmax = flat.max().item()
+        if tmin > tmax:
+            tmin, tmax = tmax, tmin
+        dt = tmax - tmin
+        tmin = tmin - self._extra_bin_frac * dt
+        tmax = tmax + self._extra_bin_frac * dt
+
+        # compute histogram
+        counts = flat.histc(bins=self._num_bins, min=tmin, max=tmax)
+        counts = counts.cpu().clone().detach()
+        bins = torch.linspace(tmin, tmax, steps=self._num_bins + 1)
+
+        # store histogram (counts, bins, current step)
+        self.histograms[name].append(
+            [[counts.numpy()], [bins.numpy()], [self.curr_step]]
+        )
 
     def _torch_hook_handle_is_valid(self, handle):
         """flag hooks that share same name"""

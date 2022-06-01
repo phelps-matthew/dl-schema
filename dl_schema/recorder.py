@@ -1,7 +1,7 @@
 """User defined logging and analytics utility for training runs"""
 import logging
 
-from dl_schema.recorder_base import RecorderBase
+from dl_schema.utils.recorder_base import RecorderBase
 
 logger = logging.getLogger(__name__)
 

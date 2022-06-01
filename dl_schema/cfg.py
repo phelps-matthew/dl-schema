@@ -7,7 +7,13 @@ from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
 from pathlib import Path
 import pyrallis
 from enum import Enum
-from dl_schema.utils import l2, zero, accuracy, cosine_schedule_with_warmup, linear_schedule_with_warmup
+from dl_schema.utils.utils import (
+    l2,
+    zero,
+    accuracy,
+    cosine_schedule_with_warmup,
+    linear_schedule_with_warmup,
+)
 
 ## Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the
 ## conveinent ability to ## be able to use callable functions and classes as dataclass
@@ -132,7 +138,7 @@ class TrainConfig:
     # number of cpu workers in dataloader
     num_workers: int = 4
     # number of training steps (weight updates)
-    train_steps: int = 1000
+    train_steps: int = 500
     # batch size
     bs: int = 64
     # learning rate (if onecycle, max_lr)

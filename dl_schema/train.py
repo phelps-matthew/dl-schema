@@ -10,7 +10,7 @@ from dl_schema.dataset import MNISTDataset
 from dl_schema.models import build_model
 from dl_schema.recorder import Recorder
 from dl_schema.trainer import Trainer
-from dl_schema.utils import flatten, set_seed
+from dl_schema.utils.utils import flatten, set_seed
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -75,12 +75,12 @@ def main():
             "cfg.py",
             "dataset.py",
             "recorder.py",
-            "recorder_base.py",
             "train.py",
             "trainer.py",
             "tune.py",
-            "utils.py",
             "models/babycnn.py",
+            "utils/recorder_base.py",
+            "utils/utils.py",
         ]
         for relpath in src_files:
             recorder.log_artifact(script_dir / relpath, "archive")
