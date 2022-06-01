@@ -152,7 +152,7 @@ class Trainer:
         # backward step
         self.model.zero_grad()
         loss.backward()
-        self.optimizer.step()
+        #self.optimizer.step()
         self.scheduler.step()
         return y_pred, loss, lr
 
@@ -229,6 +229,7 @@ class Trainer:
                 x, y = next(data_iter)
 
             self.curr_step = step
+            self.recorder.curr_step = step
             x = x.to(self.device)
             y = y.to(self.device)
 
@@ -245,6 +246,7 @@ class Trainer:
 
             # log train quantities (losses, metrics, batch of images)
             if step % self.cfg.log.train_freq == 0 or step == self.total_steps:
+                self.recorder.log_weights_and_grad_histograms()
                 mean_train_loss = float(np.mean(losses))
                 mean_metric1 = float(np.mean(metric1s))
                 losses, metric1s = [], []

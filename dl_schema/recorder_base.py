@@ -4,27 +4,34 @@ own unique analytics and thus is to inherit the RecorderBase and implement any n
 custom logic. The base class here provides many of the common utilities and methods
 shared among different ML projects.
 """
+from collections import defaultdict
 from functools import partial
+import io
 import logging
 import math
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Callable
+from typing import Callable, List, Tuple, Union
 
 import PIL
+import joypy
+import matplotlib
+
+# use Agg backend for image rendering to file
+matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 import mlflow
 import numpy as np
+from scipy.stats import gaussian_kde
 import torch
-import torch.nn as nn
 from torch import Tensor
+import torch.nn as nn
 import torchvision
 
 logger = logging.getLogger(__name__)
 
 # TODO Handle the case of duplicate names.
-# TODO Total steps within hooks
 
 
 class AsyncCaller:
@@ -125,7 +132,12 @@ class RecorderBase:
 
         # hooks
         self.hook_handles = {}
-        self.hook_counter = -1
+        self.curr_step = 0
+
+        # kernel density estimators of params and grads
+        self._kde_samples = 5000
+        self.kdes = defaultdict(list)
+        self.raws = defaultdict(list)
 
     def set_experiment(self, exp_name=None):
         """set exp_id as attribute, assumes experiment already exists"""
@@ -219,6 +231,10 @@ class RecorderBase:
         self.client.log_text(self.run_id, text, artifact_path)
 
     @AsyncCaller.async_dec(ac_attr="async_log")
+    def log_image(self, image: Union[np.ndarray, PIL.Image.Image], artifact_path=None):
+        self.client.log_image(self.run_id, image, artifact_path)
+
+    @AsyncCaller.async_dec(ac_attr="async_log")
     def log_image_grid(
         self,
         x: torch.Tensor,
@@ -274,6 +290,46 @@ class RecorderBase:
         img.sub_(low).div_(max(high - low, 1e-5))
         return img
 
+    # @AsyncCaller.async_dec(ac_attr="async_log")
+    def log_weights_and_grad_histograms(self):
+        """create histogram plots over all stored kdes"""
+        for k, v in self.kdes.items():
+            self._generate_histogram(kde_item=v, name=k)
+
+    def _generate_histogram(self, kde_item: List[Tuple[gaussian_kde, str]], name):
+        """generate histogram of single parameter or gradient"""
+        # resample from kde to form data input for histogram ridgeplot
+        data = {}
+        kde0 = kde_item[0][0]
+        for kde, step in kde_item:
+            data[step] = kde0.resample(self._kde_samples)[0]
+            #data[step] = kde0
+        # draw histogram
+        fig, axes = joypy.joyplot(
+            data,
+            overlap=2,
+            # colormap=cm.OrRd_r,
+            linecolor="w",
+            linewidth=0.5,
+            range_style="all",
+            kind="counts",
+        )
+        axes[-1].set_title(name, loc="right")
+        # render figure to numpy array
+        img = self.figure_to_array(fig)
+        img_path = name + ".png"
+        # log as artifact (do not open new thread)
+        self.client.log_image(self.run_id, img, img_path)
+
+    # @AsyncCaller.async_dec(ac_attr="async_log")
+    def save_kde(self, tensor, name):
+        """compute kernel density estimator for hooked param or gradient, store in dict"""
+        print(name, tensor[0], tensor[-1])
+        kde = gaussian_kde(tensor, bw_method="scott")
+        self.kdes[name].append((kde, self.curr_step))
+        #self.kdes[name].append((tensor, self.curr_step))
+        return (tensor, self.curr_step)
+
     def add_weights_and_grads_hooks(
         self,
         module: nn.Module,
@@ -289,10 +345,9 @@ class RecorderBase:
 
             # this callable will be called after every forward pass
             def parameter_hook(module, input_, output):
-                self.hook_counter += 1
                 if not module.training:
                     return
-                if self.hook_counter % self.cfg.log.train_freq != 0:
+                if self.curr_step % self.cfg.log.train_freq != 0:
                     return
                 # iterate through layers to find trainable params to process
                 for name, parameter in module.named_parameters():
@@ -309,12 +364,12 @@ class RecorderBase:
             # only register hooks that require gradients
             for name, parameter in module.named_parameters():
                 if parameter.requires_grad:
-                    self._hook_variable_gradient_stats(
+                    self._add_grad_hook(
                         parameter,
                         "gradients/" + prefix + name,
                     )
 
-    def _hook_variable_gradient_stats(self, var, name):
+    def _add_grad_hook(self, var, name):
         """Register backward posthook on gradient variables"""
         if not isinstance(var, torch.autograd.Variable):
             cls = type(var)
@@ -330,7 +385,7 @@ class RecorderBase:
         # this callable will be called when the associated tensor's gradients
         # are to be evaluated
         def grad_hook(grad):
-            if self.hook_counter % self.cfg.log.train_freq != 0:
+            if self.curr_step % self.cfg.log.train_freq != 0:
                 return
             self._process_hooked_tensor(grad.data, name)
 
@@ -375,8 +430,8 @@ class RecorderBase:
         # remove nans and infs if present
         flat = self._remove_infs_nans(flat)
 
-        # process tensor, recording histogram
-        print(name, flat[0], flat[-1])
+        # process tensor, store kde
+        self.save_kde(flat.numpy(), name)
 
     def _torch_hook_handle_is_valid(self, handle):
         """flag hooks that share same name"""
