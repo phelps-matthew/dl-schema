@@ -313,7 +313,7 @@ class RecorderBase:
         x_range = [bin_min, bin_max]
         # plot no more than 11 labels for large total steps
         if len(steps) > 20:
-            idxs = np.linspace(0, len(steps), 11, endpoint=False, dtype=int)
+            idxs = np.linspace(0, len(steps) - 1, 11, endpoint=True, dtype=int)
             labels = [s[0] if i in idxs else None for i, s in enumerate(steps)]
         else:
             labels = [s[0] for s in steps]
