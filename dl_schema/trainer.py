@@ -94,7 +94,7 @@ class Trainer:
         ]:
             self.scheduler = self.cfg.lr_method(
                 self.optimizer,
-                num_warmup_steps=self.cfg.warmup_steps,
+                num_warmup_steps=int(self.total_steps * self.cfg.warmup_pct),
                 num_training_steps=self.total_steps + 1,
             )
         else:

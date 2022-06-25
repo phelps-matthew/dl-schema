@@ -149,8 +149,8 @@ class TrainConfig:
     onecycle_div_factor: float = 25
     # final lr = lr / final_div
     onecycle_final_div_factor: float = 1e4
-    # number of linear warmup steps in linear warmup cosine decay scheduler
-    warmup_steps: int = 500
+    # percent of total steps to be in warmup phase
+    warmup_pct: int = 10
     # weight decay as used in AdamW
     weight_decay: float = 0.0  # only applied on matmul weights
     # adamw momentum parameters
