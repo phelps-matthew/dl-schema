@@ -178,6 +178,9 @@ def ridgeplot(
 
     global_x_range = _x_range(x_range, 0.0)
 
+    # mp -- make figs threadsafe
+    plt.clf()
+
     # Each plot will have its own axis
     fig, axes = _subplots(
         naxes=num_axes,

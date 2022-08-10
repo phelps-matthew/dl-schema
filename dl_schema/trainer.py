@@ -246,7 +246,9 @@ class Trainer:
 
             # log train quantities (losses, metrics, batch of images)
             if step % self.cfg.log.train_freq == 0 or step == self.total_steps:
-                self.recorder.log_weights_and_grad_histograms()
+                self.recorder.log_weights_and_grad_histograms(
+                    last_step=step == self.total_steps
+                )
                 mean_train_loss = float(np.mean(losses))
                 mean_metric1 = float(np.mean(metric1s))
                 losses, metric1s = [], []
