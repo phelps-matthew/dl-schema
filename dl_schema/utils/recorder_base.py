@@ -92,7 +92,9 @@ class AsyncCaller:
                 self.close()
         for i, t in enumerate(self.threads):
             logger.info(f"closing thread {i + 1}/{self.num_threads}")
+            logger.info(f"current queue length: {self._q.qsize()}")
             t.join()
+            logger.info(f"thread {i + 1}/{self.num_threads} closed")
 
     @staticmethod
     def async_dec(ac_attr):
@@ -271,11 +273,11 @@ class RecorderBase:
         """convert matplotlib figure to numpy array"""
         fmt = "png" if png else "jpg"
         buffer = io.BytesIO()
-        plt.savefig(buffer, format=fmt, dpi=100)
-        plt.close(figure)
+        figure.savefig(buffer, format=fmt, dpi=100)
         buffer.seek(0)
         img = PIL.Image.open(buffer)
         data = np.array(img)
+        plt.close(figure)
         return data
 
     def norm_batch(self, tensor: torch.Tensor):
