@@ -41,7 +41,8 @@ def _setup_axis(ax, x_range, col_name=None, grid=False, ylabelsize=None, yrot=No
     else:
         ax.yaxis.set_visible(False)
     ax.patch.set_alpha(0)
-    ax.set_xlim([min(x_range), max(x_range)])
+    if min(x_range) != max(x_range):
+        ax.set_xlim([min(x_range), max(x_range)])
     ax.tick_params(axis="both", which="both", length=0, pad=10)
     ax.xaxis.set_visible(_DEBUG)
     ax.set_frame_on(_DEBUG)
@@ -191,6 +192,10 @@ def ridgeplot(
     # _axes = _flatten(axes)
     _axes = axes.flatten()
 
+    # mp -- explicitly clear axes, helps multithreading
+    for a in _axes:
+        a.clear()
+
     # The legend must be drawn in the last axis if we want it at the bottom.
     if loc in (3, 4, 8) or "lower" in str(loc):
         legend_axis = num_axes - 1
@@ -322,7 +327,7 @@ def ridgeplot(
     _axes = list(_axes) + [last_axis]
 
     if title is not None:
-        plt.title(title)
+        last_axis.set_title(title)
 
     # The magic overlap happens here.
     h_pad = 5 + (-5 * (1 + overlap))

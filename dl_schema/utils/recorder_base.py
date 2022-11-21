@@ -92,7 +92,9 @@ class AsyncCaller:
                 self.close()
         for i, t in enumerate(self.threads):
             logger.info(f"closing thread {i + 1}/{self.num_threads}")
+            logger.info(f"current queue length: {self._q.qsize()}")
             t.join()
+            logger.info(f"thread {i + 1}/{self.num_threads} closed")
 
     @staticmethod
     def async_dec(ac_attr):
@@ -271,11 +273,11 @@ class RecorderBase:
         """convert matplotlib figure to numpy array"""
         fmt = "png" if png else "jpg"
         buffer = io.BytesIO()
-        plt.savefig(buffer, format=fmt, dpi=100)
-        plt.close(figure)
+        figure.savefig(buffer, format=fmt, dpi=100)
         buffer.seek(0)
         img = PIL.Image.open(buffer)
         data = np.array(img)
+        plt.close(figure)
         return data
 
     def norm_batch(self, tensor: torch.Tensor):
@@ -292,10 +294,20 @@ class RecorderBase:
         img.sub_(low).div_(max(high - low, 1e-5))
         return img
 
-    def log_weights_and_grad_histograms(self):
-        """create histogram plots over all stored kdes"""
-        for k, v in self.histograms.items():
-            self._generate_histogram(v, name=k)
+    def log_weights_and_grad_histograms(self, last_step=False):
+        """create histogram plots over cached histogram dict
+        Args:
+            last_step: if last step, force to add to queue
+        """
+        # only add complete set of histograms to queue if empty or last step
+        if self.async_log is not None:
+            if self.async_log._q.empty() or last_step:
+                for k, v in self.histograms.items():
+                    self._generate_histogram(v, name=k)
+        # no async, blocks
+        else:
+            for k, v in self.histograms.items():
+                self._generate_histogram(v, name=k)
 
     @AsyncCaller.async_dec(ac_attr="async_log")
     def _generate_histogram(self, data: List, name):
@@ -380,9 +392,7 @@ class RecorderBase:
         if not isinstance(var, torch.autograd.Variable):
             cls = type(var)
             raise TypeError(
-                "Expected torch.Variable, not {}.{}".format(
-                    cls.__module__, cls.__name__
-                )
+                "Expected torch.Variable, not {}.{}".format(cls.__module__, cls.__name__)
             )
         handle = self.hook_handles.get(name, None)
         if handle is not None and self._torch_hook_handle_is_valid(handle):
@@ -421,9 +431,7 @@ class RecorderBase:
             tensor = tensor.clone().type(torch.float).detach()
         if tensor.is_sparse:
             cls = type(tensor)
-            raise TypeError(
-                f"Encountered sparse tensor {cls.__module__} {cls.__name__}"
-            )
+            raise TypeError(f"Encountered sparse tensor {cls.__module__} {cls.__name__}")
 
         # flatten tensor
         flat = tensor.reshape(-1)
@@ -468,9 +476,7 @@ class RecorderBase:
         bins = torch.linspace(tmin, tmax, steps=self._num_bins + 1)
 
         # store histogram (counts, bins, current step)
-        self.histograms[name].append(
-            [[counts.numpy()], [bins.numpy()], [self.curr_step]]
-        )
+        self.histograms[name].append([[counts.numpy()], [bins.numpy()], [self.curr_step]])
 
     def _torch_hook_handle_is_valid(self, handle):
         """flag hooks that share same name"""
