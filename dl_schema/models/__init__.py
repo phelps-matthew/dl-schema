@@ -1,18 +1,17 @@
 """
 Method for registering and building any models in ./models/*
 """
-from dl_schema.models.resnet18 import ResNet18
+from dl_schema.models.resnet import (
+    resnet10,
+    resnet12,
+    resnet18,
+    resnet34,
+    resnet50,
+    resnet101,
+    resnet152,
+)
 from dl_schema.models.vgg11 import VGG11
 from dl_schema.models.babycnn import BabyCNN
-
-
-MODEL_REGISTRY = {"ResNet18": ResNet18, "VGG11": VGG11}
-
-
-def build_model(model_class, cfg):
-    """initialize model from class and model cfg. class must be in global scope"""
-    class_ = globals()[model_class]
-    return class_(cfg)
 
 
 if __name__ == "__main__":

@@ -58,24 +58,6 @@ class Criterion(Enum):
 
 
 @dataclass()
-class CNNConfig:
-    """config for vgg11 specification"""
-
-    # name of model
-    model_class: str = "BabyCNN"
-    # input image channels
-    in_channels: int = 1
-    # fully connected units in head hidden layer
-    fc_units: int = 128
-    # number of output logits in model head
-    out_features: int = 10
-    # dropout percentage of fc1 layer
-    dropout1: float = 0.25
-    # dropout percentage of fc2 layer
-    dropout2: float = 0.50
-
-
-@dataclass()
 class DataConfig:
     """config for model specification"""
 
