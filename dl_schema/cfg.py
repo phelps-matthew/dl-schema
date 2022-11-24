@@ -14,6 +14,7 @@ from dl_schema.utils.utils import (
     accuracy,
     cosine_schedule_with_warmup,
     linear_schedule_with_warmup,
+    cosine_with_hard_restarts_schedule_with_warmup,
 )
 
 ## Wrap, LRMethod, and Criterion are not strictly necessary. These classes implement the
@@ -39,6 +40,9 @@ class LRMethod(Enum):
     constant: Wrap = Wrap(LambdaLR)
     linear_warmup_cosine_decay: Wrap = Wrap(cosine_schedule_with_warmup)
     linear_warmup_linear_decay: Wrap = Wrap(linear_schedule_with_warmup)
+    linear_warmup_cosine_decay_hard_restart: Wrap = Wrap(
+        cosine_with_hard_restarts_schedule_with_warmup
+    )
 
     def __call__(self, *args, **kwargs):
         return self.value(*args, **kwargs)
@@ -64,10 +68,14 @@ class DataConfig:
 
     # root dir of train dataset
     train_root: Union[str, Path] = "./data/processed/train"
+    # root dir of validation dataset
+    val_root: Optional[Union[Path, str]] = None
     # root dir of test dataset
     test_root: Optional[Union[Path, str]] = "./data/processed/test"
     # shuffle train dataloader
     shuffle: bool = True
+    # drop last batch if it does not divide dataset evenly
+    drop_last: bool = True
 
 
 @dataclass()
@@ -84,6 +92,8 @@ class LogConfig:
     train_freq: int = 100
     # every `test_freq` steps, log test quantities (metrics, single image batch, etc.)
     test_freq: int = 500
+    # run evaluation before first train step
+    evaluate_init: bool = True
     # every `save_freq` steps save model checkpoint according to save criteria
     save_freq: int = 1000
     # save initial model state
@@ -132,8 +142,9 @@ class TrainConfig:
     # batch size
     bs: int = 4
     # learning rate (if onecycle, max_lr)
-    lr: float = 3e-4
-    # lr schedule type: (constant, onecycle, linear_warmup_cosine_decay)
+    lr: float = 1e-4
+    # lr schedule type: (constant, onecycle, linear_warmup_cosine_decay,
+    # linear_warmup_linear_decay, linear_warmup_cosine_decay_hard_restart)
     lr_method: LRMethod = LRMethod.linear_warmup_cosine_decay
     # initial lr = lr / div
     onecycle_div_factor: float = 25
@@ -141,6 +152,8 @@ class TrainConfig:
     onecycle_final_div_factor: float = 1e4
     # percent of total steps to be in warmup phase
     warmup_pct: int = 10
+    # number of hard restart cycles in cosine hard restart lr scheduler
+    restart_cycles: int = 2
     # weight decay as used in AdamW
     weight_decay: float = 0.0  # only applied on matmul weights
     # adamw momentum parameters
