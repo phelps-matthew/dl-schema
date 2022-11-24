@@ -81,7 +81,9 @@ class Trainer(TrainerBase):
             f"{self.cfg.metric1.name}_{split}": mean_metric1,
         }
         self.recorder.log_metrics(eval_metrics, self.curr_step)
-        self.recorder.log_image_grid(x.detach().cpu(), name=f"digits_{split}")
+        self.recorder.log_image_grid(
+            x.detach().cpu(), name=f"digits_{split}", normalize=True
+        )
 
         # model checkpointing
         if self.curr_step % self.cfg.log.save_freq == 0 and split == "val":
@@ -155,7 +157,9 @@ class Trainer(TrainerBase):
                 }
                 self.recorder.log_metrics(train_metrics, step)
                 if self.cfg.log.images:
-                    self.recorder.log_image_grid(x.detach().cpu(), name=f"digits_train")
+                    self.recorder.log_image_grid(
+                        x.detach().cpu(), name=f"digits_train", normalize=True
+                    )
 
                 losses, metric1s = [], []
 
