@@ -10,7 +10,7 @@ conda activate schema
 # install torch and dependencies, assumes cuda version >= 11.0
 pip install -U pip
 pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
-pip install mlflow pyrallis pandas tqdm pillow
+pip install mlflow pyrallis pandas tqdm pillow matplotlib 
 
 # install hyperparameter search dependencies
 pip install ray[tune] hyperopt
@@ -27,7 +27,7 @@ pip install -e .
 cd data
 python create_mnist_dataset.py
 ```
-* Train small CNN model
+* Train small CNN model (ResNet-18)
 ```python
 python train.py
 ```
@@ -37,7 +37,7 @@ python train.py --help
 ```
 * Train from yaml configuration, with CLI override
 ```python
-python train.py --config_path train_cfg.yaml --lr 0.001 --gpus [7]
+python train.py --config_path configs/resnet.yaml --lr 0.001 --gpus [7]
 ```
 * Start mlflow ui to visualize results
 ```
@@ -46,7 +46,7 @@ mlflow ui
 # to set host and port
 mlflow ui --host 0.0.0.0 --port 8080
 ```
-* Serialize dataclass train config to yaml, outputting `train_cfg.yaml`
+* Serialize dataclass train config to yaml, outputting `configs/train_cfg.yaml`
 ```python
 python cfg.py
 ```
