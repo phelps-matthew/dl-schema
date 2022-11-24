@@ -1,4 +1,4 @@
-"""Sample training run"""
+"""Entrypoint to train models."""
 import logging
 import os
 from pathlib import Path
@@ -97,10 +97,11 @@ def main():
             "train.py",
             "trainer.py",
             "tune.py",
+            "base/recorder_base.py",
+            "base/trainer_base.py",
             "models/babycnn.py",
             "models/vgg11.py",
             "models/resnet.py",
-            "utils/recorder_base.py",
             "utils/utils.py",
         ]
         for relpath in src_files:

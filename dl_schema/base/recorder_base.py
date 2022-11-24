@@ -243,8 +243,8 @@ class RecorderBase:
         x: torch.Tensor,
         name: str = "x",
         NCHW: bool = True,
-        normalize: bool = True,
-        jpg: bool = True,
+        normalize: bool = False,
+        jpg: bool = False,
         padding: bool = 1,
     ):
         """log batch of images
@@ -269,11 +269,13 @@ class RecorderBase:
             ).permute(1, 2, 0)
             self.client.log_image(self.run_id, grid_x.numpy(), f"{name}.{img_fmt}")
 
-    def figure_to_array(self, figure: plt.Figure, png: bool = True) -> np.ndarray:
+    def figure_to_array(
+        self, figure: plt.Figure, png: bool = True, bbox_inches=None
+    ) -> np.ndarray:
         """convert matplotlib figure to numpy array"""
         fmt = "png" if png else "jpg"
         buffer = io.BytesIO()
-        figure.savefig(buffer, format=fmt, dpi=100)
+        figure.savefig(buffer, format=fmt, dpi=100, bbox_inches=bbox_inches)
         buffer.seek(0)
         img = PIL.Image.open(buffer)
         data = np.array(img)

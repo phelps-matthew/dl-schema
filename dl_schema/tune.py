@@ -78,9 +78,9 @@ def _run(cfg, checkpoint_dir=None):
         "train.py",
         "trainer.py",
         "tune.py",
+        "base/recorder_base.py",
+        "base/trainer_base.py",
         "models/babycnn.py",
-        "utils/utils.py",
-        "utils/recorder_base.py",
     ]
     for relpath in src_files:
         recorder.log_artifact(script_dir / relpath, "archive")
