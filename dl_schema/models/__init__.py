@@ -23,7 +23,7 @@ def build_model(model_class, model_cfg):
 if __name__ == "__main__":
     """Test the model"""
     from torch.utils.data import DataLoader
-    from torchinfo import summary
+    #from torchinfo import summary
     from dl_schema.dataset import MNISTDataset
     from dl_schema.cfg import TrainConfig
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     model = BabyCNN(cfg.model)
     y_pred = model(x)
-    summary(model, (64, 1, 28, 28))
+    #summary(model, (64, 1, 28, 28))
     print(f"Input shape: {x.size()}")
     print(f"Labels shape: {y.size()}")
     print(f"Inference shape: {y_pred.size()}")
