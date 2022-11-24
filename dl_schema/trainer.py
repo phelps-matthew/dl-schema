@@ -4,10 +4,8 @@ Optimizers, lr schedules, saving/loading, and dataloading is handled in inherite
 TrainerBase.
 """
 import logging
-from pathlib import Path
 
 import numpy as np
-from ray import tune
 import torch
 from tqdm import tqdm
 
@@ -145,7 +143,6 @@ class Trainer(TrainerBase):
                 )
                 mean_train_loss = float(np.mean(losses))
                 mean_metric1 = float(np.mean(metric1s))
-                losses, metric1s = [], []
                 train_progress = (
                     f"TRAIN STEP {step}/{self.total_steps}: "
                     + f"loss {mean_train_loss:.6e} lr {lr:.2e}"
@@ -159,6 +156,8 @@ class Trainer(TrainerBase):
                 self.recorder.log_metrics(train_metrics, step)
                 if self.cfg.log.images:
                     self.recorder.log_image_grid(x.detach().cpu(), name=f"digits_train")
+
+                losses, metric1s = [], []
 
             # evaluate test set
             if (
