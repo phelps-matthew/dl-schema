@@ -96,18 +96,8 @@ class Trainer(TrainerBase):
                 self.save_model("last.pt", loss=mean_loss)
 
         # ray tune
-        if self.tune:
-            # tune automatically creates the checkpoint dir
-            # we must report eval loss back to tune as below
-            with tune.checkpoint_dir(step=self.curr_step) as checkpoint_dir:
-                path = Path(checkpoint_dir) / "last.pt"
-                self.save_model(path, loss=mean_loss)
-                tune.report(loss=mean_loss, step=self.curr_step)
-                # link mlflow articats/tune to tune run directory if unlinked
-                if not self.tune_linked:
-                    tune_root = Path(checkpoint_dir).parent
-                    (self.recorder.root / "tune").symlink_to(tune_root)
-                    self.tune_linked = True
+        if self.tune and split == "val":
+            self.tune_hook()
 
     def run(self):
         """iterate over train set and evaluate on val/test set"""
@@ -178,4 +168,3 @@ class Trainer(TrainerBase):
             ):
                 self.evaluate("val")
                 self.evaluate("test")
-                self.evaluate()

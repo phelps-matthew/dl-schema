@@ -153,6 +153,19 @@ class TrainerBase:
         logger.info(f"loading model params from {ckpt_path}")
         self.model.load_state_dict(ckpt["model_state_dict"])
 
+    def tune_hook(self):
+        # tune automatically creates the checkpoint dir
+        # we must report eval loss back to tune as below
+        with tune.checkpoint_dir(step=self.curr_step) as checkpoint_dir:
+            path = Path(checkpoint_dir) / "last.pt"
+            self.save_model(path, loss=mean_loss)
+            tune.report(loss=mean_loss, step=self.curr_step)
+            # link mlflow articats/tune to tune run directory if unlinked
+            if not self.tune_linked:
+                tune_root = Path(checkpoint_dir).parent
+                (self.recorder.root / "tune").symlink_to(tune_root)
+                self.tune_linked = True
+
     def train_step(self, x, y):
         """single train step (weight update)"""
         raise NotImplementedError
