@@ -1,4 +1,4 @@
-"""Sample training run"""
+"""Entrypoint to train models."""
 import logging
 import os
 from pathlib import Path
@@ -35,16 +35,15 @@ def main():
 
     # create datasets
     logger.info("loading datasets")
-    train_dataset, test_dataset = None, None
+    train_dataset, val_dataset, test_dataset = None, None, None
     if (
         cfg.data.train_root is not None
         and Path(cfg.data.train_root).expanduser().exists()
     ):
         train_dataset = MNISTDataset(split="train", cfg=cfg)
-    if (
-        cfg.data.test_root is not None
-        and Path(cfg.data.test_root).expanduser().exists()
-    ):
+    if cfg.data.val_root is not None and Path(cfg.data.val_root).expanduser().exists():
+        val_dataset = MNISTDataset(split="val", cfg=cfg)
+    if cfg.data.test_root is not None and Path(cfg.data.test_root).expanduser().exists():
         test_dataset = MNISTDataset(split="test", cfg=cfg)
 
     # create recorder and start mlflow run
@@ -52,17 +51,37 @@ def main():
     recorder.create_experiment()
     with recorder.start_run():
         # build model
-        logger.info(f"initializing model: {cfg.model.model_class}")
-        model = build_model(model_class=cfg.model.model_class, cfg=cfg.model)
+        logger.info(f"initializing model: {cfg.model_class}")
+        if "resnet" in cfg.model_class:
+            model_cfg = cfg.resnet
+        elif "VGG" in cfg.model_class:
+            model_cfg = cfg.vgg11
+        else:
+            model_cfg = cfg.babycnn
+        model = build_model(cfg.model_class, model_cfg)
+
+        # log dataset size
+        recorder.log_params(
+            {
+                "n_train": len(train_dataset) if train_dataset is not None else 0,
+                "n_val": len(val_dataset) if val_dataset is not None else 0,
+                "n_test": len(test_dataset) if test_dataset is not None else 0,
+            }
+        )
 
         # add parameter and gradient logging (if specified in cfg)
         recorder.add_weights_and_grads_hooks(model)
 
         # initialize Trainer
         logger.info("initializing trainer")
-        if train_dataset is None and test_dataset is None:
-            logger.info("no datasets found, check that MNIST data exists")
-        trainer = Trainer(model, cfg, train_dataset, test_dataset, recorder)
+        trainer = Trainer(
+            model,
+            cfg,
+            train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
+            recorder=recorder,
+        )
 
         # log config as params and yaml
         cfg_dict = pyrallis.encode(cfg)  # cfg as dict, encoded for yaml
@@ -78,8 +97,11 @@ def main():
             "train.py",
             "trainer.py",
             "tune.py",
+            "base/recorder_base.py",
+            "base/trainer_base.py",
             "models/babycnn.py",
-            "utils/recorder_base.py",
+            "models/vgg11.py",
+            "models/resnet.py",
             "utils/utils.py",
         ]
         for relpath in src_files:
