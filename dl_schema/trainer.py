@@ -20,11 +20,19 @@ class Trainer:
     """train over n steps and evaluate over val/test set"""
 
     def __init__(
-        self, model, cfg, train_dataset, test_dataset=None, recorder=None, verbose=True
+        self,
+        model,
+        cfg,
+        train_dataset,
+        val_dataset=None,
+        test_dataset=None,
+        recorder=None,
+        verbose=True,
     ):
         self.cfg = cfg
         self.model = model
         self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
         self.test_dataset = test_dataset
         self.recorder = recorder
         self.test_only = self.train_dataset is None
@@ -49,11 +57,13 @@ class Trainer:
             self.model = torch.nn.DataParallel(self.model).to(self.device)
 
         # set dataloaders
-        self.train_loader = self.create_dataloader(train=True)
-        self.test_loader = self.create_dataloader(train=False)
+        self.train_loader = self.create_dataloader(self.train_dataset, train=True)
+        self.val_loader = self.create_dataloader(self.val_dataset, train=False)
+        self.test_loader = self.create_dataloader(self.test_dataset, train=False)
 
         # configure optimizer
-        if self.test_only:
+        self.infer = self.train_dataset is None
+        if self.infer:
             self.optimizer = None
             self.cfg.load_optimizer = False
         else:
@@ -63,21 +73,47 @@ class Trainer:
         # initialize best loss for ckpt saving
         self.best_loss = float("inf")
 
-    def create_dataloader(self, train=True):
-        dataset = self.train_dataset if train else self.test_dataset
-        shuffle = self.cfg.data.shuffle if train else False
+    def create_dataloader(self, dataset, train=True):
         if dataset is None:
             return None
         loader = DataLoader(
             dataset,
-            shuffle=shuffle,
+            shuffle=self.cfg.data.shuffle if train else False,
             pin_memory=True,
             batch_size=self.cfg.bs,
             num_workers=self.cfg.num_workers,
-            drop_last=True,
+            drop_last=self.cfg.data.drop_last,
         )
         return loader
 
+    def set_scheduler(self):
+        """create learning rate scheduler"""
+        if self.cfg.lr_method.name == "onecycle":
+            self.scheduler = self.cfg.lr_method(
+                self.optimizer,
+                self.cfg.lr,
+                total_steps=self.total_steps + 1,
+                div_factor=self.cfg.onecycle_div_factor,
+                final_div_factor=self.cfg.onecycle_final_div_factor,
+            )
+        elif self.cfg.lr_method.name in {
+            "linear_warmup_cosine_decay",
+            "linear_warmup_linear_decay",
+        }:
+            self.scheduler = self.cfg.lr_method(
+                self.optimizer,
+                num_warmup_steps=int(self.total_steps * self.cfg.warmup_pct / 100),
+                num_training_steps=self.total_steps + 1,
+            )
+        elif self.cfg.lr_method.name == "linear_warmup_cosine_decay_hard_restart":
+            self.scheduler = self.cfg.lr_method(
+                self.optimizer,
+                num_warmup_steps=int(self.total_steps * self.cfg.warmup_pct / 100),
+                num_training_steps=self.total_steps + 1,
+                num_cycles=self.cfg.restart_cycles,
+            )
+        else:
+            self.scheduler = self.cfg.lr_method(self.optimizer, lr_lambda=lambda step: 1)
     def set_scheduler(self):
         """create learning rate scheduler"""
         if self.cfg.lr_method.name == "onecycle":
@@ -98,9 +134,7 @@ class Trainer:
                 num_training_steps=self.total_steps + 1,
             )
         else:
-            self.scheduler = self.cfg.lr_method(
-                self.optimizer, lr_lambda=lambda step: 1
-            )
+            self.scheduler = self.cfg.lr_method(self.optimizer, lr_lambda=lambda step: 1)
 
     def save_model(self, path="last.pt", loss=None, as_artifact=True):
         """save model state dict, optim state dict, step and loss"""
@@ -156,10 +190,13 @@ class Trainer:
         self.scheduler.step()
         return y_pred, loss, lr
 
-    def evaluate(self):
+    def evaluate(self, split="val"):
         """evaluation routine, iterating over val/test set"""
         self.model.eval()
         losses, metric1s = [], []
+        loader = self.test_loader if split == "test" else self.val_loader
+        if loader is None:
+            return
         pbar = tqdm(self.test_loader)
         for x, y in pbar:
             x = x.to(self.device)
@@ -177,19 +214,20 @@ class Trainer:
             losses.append(loss.item())
             metric1s.append(metric1.item())
 
-            pbar.set_description(f"EVALUATION loss {np.mean(losses):.6e}")
+            pbar.set_description(f"{split.upper()} loss {np.mean(losses):.6e}")
 
         # log val/test quantities (losses, metrics, batch of images)
         mean_loss = float(np.mean(losses))
         mean_metric1 = float(np.mean(metric1s))
-        self.recorder.log_metric("loss_test", mean_loss, self.curr_step)
-        self.recorder.log_metric(
-            self.cfg.metric1.name + "_test", mean_metric1, self.curr_step
-        )
-        self.recorder.log_image_grid(x.detach().cpu(), name="digits_test")
+        eval_metrics = {
+            f"loss_{split}": mean_loss,
+            f"{self.cfg.metric1.name}_{split}": mean_metric1,
+        }
+        self.recorder.log_metrics(eval_metrics, self.curr_step)
+        self.recorder.log_image_grid(x.detach().cpu(), name=f"digits_{split}")
 
         # model checkpointing
-        if self.curr_step % self.cfg.log.save_freq == 0:
+        if self.curr_step % self.cfg.log.save_freq == 0 and split=="val":
             # update best loss, possibly save best model state
             if mean_loss < self.best_loss:
                 if self.cfg.log.save_best:
@@ -214,6 +252,13 @@ class Trainer:
 
     def run(self):
         """iterate over train set and evaluate on val/test set"""
+        # evaluate test set before first train step (get baseline)
+        if self.cfg.log.evaluate_init:
+            self.evaluate("val")
+            self.evaluate("test")
+
+        if self.train_loader is None:
+            return
         data_iter = iter(self.train_loader)
 
         # initialize running lists of quantities to be logged
@@ -267,5 +312,11 @@ class Trainer:
                     self.recorder.log_image_grid(x.detach().cpu(), name=f"digits_train")
 
             # evaluate test set
-            if step % self.cfg.log.test_freq == 0 or step == self.total_steps:
+            if (
+                step > 1
+                and step % self.cfg.log.test_freq == 0
+                or step == self.total_steps
+            ):
+                self.evaluate("val")
+                self.evaluate("test")
                 self.evaluate()
