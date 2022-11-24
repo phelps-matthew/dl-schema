@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 class ResnetConfig:
     """config for ResNet specification"""
 
-    # number of input channels
+    # input image channels
     in_channels: int = 1
     # kernel size of first layer (7 Hu)
     initial_kernel_size: int = 7

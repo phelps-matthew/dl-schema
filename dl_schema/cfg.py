@@ -7,6 +7,7 @@ from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
 from pathlib import Path
 import pyrallis
 from enum import Enum
+from dl_schema.models.cfg import ResnetConfig, BabyCNNConfig, VGG11Config
 from dl_schema.utils.utils import (
     l2,
     zero,
@@ -103,8 +104,15 @@ class LogConfig:
 class TrainConfig:
     """config for training instance"""
 
-    # config for model specification
-    model: CNNConfig = field(default_factory=CNNConfig)
+    # specification of model class to instantiate
+    # (resnet10, resnet12, resnet18, resnet34, resnet50, resnet101, resnet152, VGG11, BabyCNN)
+    model_class: str = "resnet18"
+    # model config for resnet
+    resnet: Optional[ResnetConfig] = field(default_factory=ResnetConfig)
+    # model config for vgg11
+    vgg11: Optional[VGG11Config] = field(default_factory=VGG11Config)
+    # model config for babycnn
+    babycnn: Optional[BabyCNNConfig] = field(default_factory=BabyCNNConfig)
     # config for data specification
     data: DataConfig = field(default_factory=DataConfig)
     # config for logging specification
@@ -120,9 +128,9 @@ class TrainConfig:
     # number of cpu workers in dataloader
     num_workers: int = 4
     # number of training steps (weight updates)
-    train_steps: int = 1000
+    train_steps: int = 100
     # batch size
-    bs: int = 64
+    bs: int = 4
     # learning rate (if onecycle, max_lr)
     lr: float = 3e-4
     # lr schedule type: (constant, onecycle, linear_warmup_cosine_decay)
@@ -150,8 +158,20 @@ class TrainConfig:
     # enable ray hyperparam tuning
     tune: bool = False
 
+    def __post_init__(self):
+        # set only one model config to be active
+        if "resnet" in self.model_class:
+            self.babycnn = None
+            self.vgg11 = None
+        elif "VGG" in self.model_class:
+            self.resnet = None
+            self.babycnn = None
+        else:
+            self.resnet = None
+            self.vgg11 = None
+
 
 if __name__ == "__main__":
     """test the train config, export to yaml"""
     cfg = pyrallis.parse(config_class=TrainConfig)
-    pyrallis.dump(cfg, open("train_cfg.yaml", "w"))
+    pyrallis.dump(cfg, open("./configs/train_cfg.yaml", "w"))

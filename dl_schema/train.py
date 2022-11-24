@@ -52,8 +52,14 @@ def main():
     recorder.create_experiment()
     with recorder.start_run():
         # build model
-        logger.info(f"initializing model: {cfg.model.model_class}")
-        model = build_model(model_class=cfg.model.model_class, cfg=cfg.model)
+        logger.info(f"initializing model: {cfg.model_class}")
+        if "resnet" in cfg.model_class:
+            model_cfg = cfg.resnet
+        elif "VGG" in cfg.model_class:
+            model_cfg = cfg.vgg11
+        else:
+            model_cfg = cfg.babycnn
+        model = build_model(cfg.model_class, model_cfg)
 
         # add parameter and gradient logging (if specified in cfg)
         recorder.add_weights_and_grads_hooks(model)

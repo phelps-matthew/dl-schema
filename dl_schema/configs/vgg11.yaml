@@ -1,0 +1,47 @@
+babycnn: null
+betas:
+- 0.9
+- 0.95
+bs: 4
+data:
+  shuffle: true
+  test_root: ./data/processed/test
+  train_root: ./data/processed/train
+exp_name: debug
+gpus:
+- 0
+load_ckpt_pth: null
+load_optimizer: false
+log:
+  enable_async: true
+  gradients: false
+  images: true
+  num_threads: 4
+  params: false
+  save_best: false
+  save_freq: 1000
+  save_init: false
+  save_last: false
+  test_freq: 500
+  train_freq: 100
+  uri: ~/dev/dl-schema/dl_schema/mlruns
+loss: crossentropy
+lr: 0.0003
+lr_method: linear_warmup_cosine_decay
+metric1: accuracy
+model_class: VGG11
+num_workers: 4
+onecycle_div_factor: 25
+onecycle_final_div_factor: 10000.0
+resnet: null
+resume: false
+run_name: run_0
+seed: 42
+train_steps: 100
+tune: false
+vgg11:
+  fc_units: 128
+  in_channels: 1
+  out_features: 10
+warmup_pct: 10
+weight_decay: 0.0

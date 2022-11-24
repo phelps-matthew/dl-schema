@@ -14,6 +14,12 @@ from dl_schema.models.vgg11 import VGG11
 from dl_schema.models.babycnn import BabyCNN
 
 
+def build_model(model_class, model_cfg):
+    """initialize model from model cfg and model class in global scope"""
+    class_ = globals()[model_class]
+    return class_(model_cfg)
+
+
 if __name__ == "__main__":
     """Test the model"""
     from torch.utils.data import DataLoader
