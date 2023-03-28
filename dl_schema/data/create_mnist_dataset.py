@@ -1,7 +1,7 @@
 import argparse
 import gzip
-import pathlib
 import struct
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -9,10 +9,10 @@ import requests
 from PIL import Image
 
 
-def donwload(urls, path):
+def download(urls, path):
     path.mkdir(parents=True, exist_ok=True)
     for url in urls:
-        filepath = path / pathlib.Path(url).name
+        filepath = path / Path(url).name
         if not filepath.exists():
             res = requests.get(url)
             if res.status_code == 200:
@@ -59,12 +59,13 @@ def make_labellist(path, kind, labels):
 def main():
     parser = argparse.ArgumentParser(
         description='Download and Convert MNIST binary files to image files')
-    parser.add_argument('-p', '--path', type=pathlib.Path, default='./')
+    #parser.add_argument('-p', '--path', type=pathlib.Path, default='./data/')
     parser.add_argument('-o', '--out', choices=['npz', 'jpg'], default='jpg')
     args = parser.parse_args()
 
     def pipeline(kind):
         _kind = kind
+        target_path = Path(__file__).resolve().parent
         if kind == 'test':
             _kind = 't10k'
 
@@ -73,20 +74,20 @@ def main():
             '{}/{}-images-idx3-ubyte.gz'.format(baseurl, _kind),
             '{}/{}-labels-idx1-ubyte.gz'.format(baseurl, _kind)
         ]
-        donwload(urls, args.path / 'raw')
+        download(urls, target_path / 'raw')
 
         paths = [
-            args.path / 'raw' / '{}-images-idx3-ubyte.gz'.format(_kind),
-            args.path / 'raw' / '{}-labels-idx1-ubyte.gz'.format(_kind)
+            target_path / 'raw' / '{}-images-idx3-ubyte.gz'.format(_kind),
+            target_path / 'raw' / '{}-labels-idx1-ubyte.gz'.format(_kind)
         ]
         images, labels = load(paths)
 
         if args.out == 'jpg':
-            path = args.path / 'processed'
+            path = target_path / 'processed'
             make_images(path / kind / 'images', images, labels)
             make_labellist(path / kind / 'labels', "annot", labels)
         else:
-            path = args.path / 'processed' / 'npz'
+            path = target_path / 'processed' / 'npz'
             path.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(
                 path / '{}.npz'.format(kind), x=images, y=labels)
