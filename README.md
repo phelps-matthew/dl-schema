@@ -3,13 +3,14 @@ A deep learning training template constructed as a minimal working MNIST example
 
 ## Install
 ```
-# create `schema` conda environment
+# create `dl` conda environment
 conda create -n dl python=3.10 pip
 conda activate dl
 
 # install torch and dependencies, assumes cuda version >= 11.0
 pip install torch=2.0.0 torchvision=0.15.1
-pip install mlflow=2.2.2 pyrallis pandas tqdm pillow matplotlib 
+pip install mlflow=2.2.2 pyrallis=0.3.1 
+pip install pandas tqdm pillow matplotlib 
 
 # install hyperparameter search dependencies
 pip install ray[tune] hyperopt
