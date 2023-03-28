@@ -4,13 +4,12 @@ A deep learning training template constructed as a minimal working MNIST example
 ## Install
 ```
 # create `schema` conda environment
-conda create -n schema python=3.9 pip
-conda activate schema
+conda create -n dl python=3.10 pip
+conda activate dl
 
 # install torch and dependencies, assumes cuda version >= 11.0
-pip install -U pip
-pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
-pip install mlflow pyrallis pandas tqdm pillow matplotlib 
+pip install torch=2.0.0 torchvision=0.15.1
+pip install mlflow=2.2.2 pyrallis pandas tqdm pillow matplotlib 
 
 # install hyperparameter search dependencies
 pip install ray[tune] hyperopt
@@ -24,8 +23,8 @@ pip install -e .
 ## Usage
 * Download and extract the MNIST dataset
 ```python
-cd data
-python create_mnist_dataset.py
+cd dl-schema
+python data/create_mnist_dataset.py
 ```
 * Train small CNN model (ResNet-18)
 ```python
